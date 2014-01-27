@@ -848,7 +848,7 @@ __optimize3 __regparm1 void SVC_Info( netadr_t *from ) {
 		Info_SetValueForKey( infostring, "type", va("%i", sv_authorizemode->integer));
 
 	Info_SetValueForKey( infostring, "mapname", sv_mapname->string );
-	Info_SetValueForKey( infostring, "clients", va("%i", count) );
+	Info_SetValueForKey( infostring, "clients", va("%i", count + sv_queuedClients ) ); //Add queued clients to player count
 	Info_SetValueForKey( infostring, "g_humanplayers", va("%i", humans));
 	Info_SetValueForKey( infostring, "sv_maxclients", va("%i", sv_maxclients->integer - sv_privateClients->integer ) );
 	Info_SetValueForKey( infostring, "gametype", sv_g_gametype->string );
@@ -1698,8 +1698,16 @@ void SV_CopyCvars()
 
 
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+	cvar_t** tmp;
+	sv_queuedClients = 0;
+=======
+=======
+>>>>>>> 35a61c6358e076d34736de2fe1161d52a5c9dd7b
 void SV_InitCvarsOnce(void){
 
+>>>>>>> 35a61c6358e076d34736de2fe1161d52a5c9dd7b
 	sv_paused = Cvar_RegisterBool("sv_paused", qfalse, CVAR_ROM, "True if the server is paused");
 	sv_killserver = Cvar_RegisterBool("sv_killserver", qfalse, CVAR_ROM, "True if the server getting killed");
 	sv_protocol = Cvar_RegisterInt("protocol", PROTOCOL_VERSION, PROTOCOL_VERSION, PROTOCOL_VERSION, 0x44, "Protocol version");

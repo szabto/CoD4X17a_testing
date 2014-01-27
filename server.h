@@ -85,6 +85,8 @@ typedef enum {
 	CS_ACTIVE		// client is fully in game
 }clientState_t;
 
+//Count how many players in queue
+int sv_queuedClients;
 
 //*******************************************************************************
 

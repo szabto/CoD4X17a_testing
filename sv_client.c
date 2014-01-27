@@ -546,6 +546,8 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 		    svse.connectqueue[i].attempts = 0;
 		}
 		if(svse.connectqueue[i].firsttime == 0){
+			//On first join try, when server is full, count player in queue
+			sv_queuedClients ++;
 		    svse.connectqueue[i].firsttime = Com_GetRealtime();
 		}
 		svse.connectqueue[i].attempts++;
@@ -556,13 +558,18 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 	//gotnewcl:
 	Com_Memset(newcl, 0x00, sizeof(client_t));
 
+
+    //If there was player in queue then make its value lower
+    if( sv_queuedClients > 0 ) {
+    	sv_queuedClients --;
+    }
+
 	newcl->authentication = svse.challenges[c].ipAuthorize;
 	newcl->power = 0; //Sets the default power for the client
         newcl->challenge = svse.challenges[c].challenge; 	// save the challenge
 	// (build a new connection
 	// accept the new client
 	// this is the only place a client_t is ever initialized)
-
 
         clientNum = newcl - svs.clients;
 
