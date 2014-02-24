@@ -34,13 +34,15 @@
 #include "scr_vm_functions.h"
 #include "sys_thread.h"
 #include "filesystem.h"
+#include "misc.h"
+#include "sys_cod4loader.h"
+#include "sec_update.h"
+#include "cmd.h"
 
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <dlfcn.h>
-
 
 
 #define ELF_TYPEOFFSET 16
@@ -51,188 +53,22 @@
 #define ELF_SECTIONSTRINGOFFSET 0
 #define ELF_SECTIONTYPEOFFSET 4
 #define DLLMOD_FILESIZE 2281820
+#define ELF_TEXTSECTIONLENGTH 1831332
 
 
-static qboolean Sys_ModBinaryFile(FILE* fp, int offset, byte newval)
-{
-    if(fseek(fp, offset, SEEK_SET) != 0)
-    {
-        printf("Seek error on file cod4_lnxded.so opened for writing - Error: %s\n", strerror(errno));
-        return qfalse;
-    }
-    if(fputc(newval, fp) == newval)
-    {
-        return qtrue;
-    }
-    return qfalse;
-}
-
-static qboolean Sys_LoadImagePrepareFile(const char* path)
-{
-        FILE* fp;
-        int rval, trys;
-        char cmdline[MAX_OSPATH];
-        char copypath[MAX_OSPATH];
-        const char* dir;
-
-        if(path == NULL)
-            return qfalse;
-
-        //Get directory name
-        Q_strncpyz(copypath, path, sizeof(copypath)); //Copy 1st because the behaviour of dirname()is undefined
-        dir = Sys_Dirname( copypath );
-
-        //Test directory permissions:
-        if(access(dir, F_OK) != 0)
-        {
-            printf("Error directory %s seems not to exist: %s\n", dir, strerror(errno));
-            return qfalse;
-        }
-
-        if(access(dir, R_OK) != 0)
-        {
-            printf("Read access to directory %s is denied: %s\n", dir, strerror(errno));
-            return qfalse;
-        }
-
-        if(access(dir, W_OK) != 0)
-        {
-            printf("Write access to directory %s is denied: %s\n", dir, strerror(errno));
-            return qfalse;
-        }
-
-        trys = 0;
-
-        if(access(path, F_OK) != 0)
-        {
-            printf("The file %s seems not to exist\n", path);
-
-        dl_again:
-            printf("Trying to download...\n");
-
-            Com_sprintf(cmdline, sizeof(cmdline), "wget -O %s %s", path, "http://update.iceops.in/cod4_lnxded.so");
-            rval = system( cmdline );
-            if(rval != 0)
-            {
-                printf("Failed to download cod4_lnxded.so\nPlease make sure you are connected to the internet or install this file manually: %s\n", path);
-                return qfalse;
-            }
-
-            if(access(path, F_OK) != 0)
-            {
-                printf("Failed to install cod4_lnxded.so\nPlease try to install this file manually: %s\n", path);
-                return qfalse;
-
-            }
-        }
-
-        if(access(path, R_OK) != 0)
-        {
-            printf("Read access to file %s is denied: %s\n", path, strerror(errno));
-            return qfalse;
-        }
-
-        if(access(path, W_OK) != 0)
-        {
-            printf("Write access to file %s is denied: %s\n", path, strerror(errno));
-            return qfalse;
-        }
-
-        //Test if it is the correct file and see if it is already a shared object
-        fp = fopen(path, "rb");
-        if(fp)
-        {
-            if( !fseek(fp, 0, SEEK_END) && ftell(fp) == DLLMOD_FILESIZE && !fseek(fp, ELF_INITOFFSET, SEEK_SET))
-            {
-                if(fgetc(fp) == 0xc3)
-                { //The elf type is shared library already
-                    fclose(fp);
-                    return qtrue;
-                }
-                //The elf type is exe file - we have to make it a shared library
-                fclose(fp);
-
-            }else{
-                //The file can not be read or the size is wrong
-                fclose(fp);
-                printf("The file %s can not be read or has a wrong size.\n", path);
-                if(trys < 1)
-                {
-                    printf("Deleting file: %s\n", path);
-                    if(remove(path) != 0)
-                    {
-                        printf("Couldn't delete file %s Error: %s\n", path, strerror(errno));
-                        return qfalse;
-                    }
-                    trys++;
-                    goto dl_again;
-                }
-                return qfalse;
-            }
-
-        }else{
-            printf("Failed to open file %s for reading - Error: %s\n", path, strerror(errno));
-            return qfalse;
-        }
-
-        //Try to make it a shared object
-        fp = fopen(path, "rb+");
-        if(fp)
-        {
-            /* Turning ELF file into a shared library object */
-            if(Sys_ModBinaryFile(fp, ELF_TYPEOFFSET, 3) == qfalse)
-            {
-                fclose(fp);
-                return qfalse;
-            }
-            /* kill function _init to prevent Segmentation fault if image is relocated. So we can give a proper error message instead SigSegV */
-            if(Sys_ModBinaryFile(fp, ELF_INITOFFSET, 0xc3) == qfalse)
-            {
-                fclose(fp);
-                return qfalse;
-            }
-            /* kill function _fini to prevent Segmentation fault if image is relocated. */
-            if(Sys_ModBinaryFile(fp, ELF_FINIOFFSET, 0xc3) == qfalse)
-            {
-                fclose(fp);
-                return qfalse;
-            }
-            /* kill relocation section (.rel.dyn) name to "" */
-            if(Sys_ModBinaryFile(fp, ELF_RELOCOFFSET + ELF_SECTIONSTRINGOFFSET, 0x5b) == qfalse)
-            {
-                fclose(fp);
-                return qfalse;
-            }
-            /* kill relocation section (.rel.plt) name to "" */
-            if(Sys_ModBinaryFile(fp, ELF_RELOC2OFFSET + ELF_SECTIONSTRINGOFFSET, 0x64) == qfalse)
-            {
-                fclose(fp);
-                return qfalse;
-            }
-            /* change relocation section (.rel.dyn) type to null */
-            if(Sys_ModBinaryFile(fp, ELF_RELOCOFFSET + ELF_SECTIONTYPEOFFSET, 0x0) == qfalse)
-            {
-                fclose(fp);
-                return qfalse;
-            }
-            /* change relocation section (.rel.plt) type to null */
-            if(Sys_ModBinaryFile(fp, ELF_RELOC2OFFSET + ELF_SECTIONTYPEOFFSET, 0x0) == qfalse)
-            {
-                fclose(fp);
-                return qfalse;
-            }
-            fclose(fp);
-            return qtrue;
-        }
-
-        printf("Failed to open file %s for writing - Error: %s\n", path, strerror(errno));
-        return qfalse;
-
-}
-
-
+void Sys_CoD4Linker();
 void Com_PatchError(void);
+void Cvar_PatchModifiedFlags();
 
+static void __cdecl Cbuf_AddText_Wrapper_IW(int dummy, const char *text )
+{
+    Cbuf_AddText( text );
+}
+
+static void __cdecl Cbuf_InsertText_Wrapper_IW(int dummy, const char *text )
+{
+    Cbuf_InsertText( text );
+}
 
 static void Sys_PatchImageData( void )
 {
@@ -310,13 +146,15 @@ static byte patchblock_NET_OOB_CALL4[] = { 0x9B, 0x53, 0x17, 0x8,
 	Sys_PatchImageWithBlock(patchblock_Pmove_GetGravity, sizeof(patchblock_Pmove_GetGravity));
 	Sys_PatchImageWithBlock(patchblock_ClientConnect_NoPassword, sizeof(patchblock_ClientConnect_NoPassword));
 	Com_Memset((void*)0x80b4872, 0x90, 41); //In G_RegisterCvars()
+	Com_Memset((void*)0x80b478b, 0x90, 108); //In G_RegisterCvars() (sv_maxclients)
 	Sys_PatchImageWithBlock(patchblock_G_RegisterCvars, sizeof(patchblock_G_RegisterCvars));
 	Sys_PatchImageWithBlock(patchblock_Scr_AddSourceBuffer_Ignore_fs_game, sizeof(patchblock_Scr_AddSourceBuffer_Ignore_fs_game));  //Maybe script unlock ?
 	Sys_PatchImageWithBlock(patchblock_Scr_AddSourceBuffer_Ignore_fs_game2, sizeof(patchblock_Scr_AddSourceBuffer_Ignore_fs_game2));  //Script unlock
 	Sys_PatchImageWithBlock(patchblock_SV_SpawnServer, sizeof(patchblock_SV_SpawnServer));  //Skip useless check for cvar: sv_dedicated
 	Com_Memset((void*)0x8174da9, 0x90, 5); //In SV_SpawnServer()  Don't overwrite sv.frameusec  (was before unknown write only variable)
+	Com_Memset((void*)0x81753ea, 0x90, 5); //In SV_SpawnServer()  Removing the call of NET_Sleep() I don't know for what this can be usefull to have here O_o
 	Com_Memset((void*)0x8174db5, 0x90, 42); //In SV_SpawnServer()  Don't set cvar cl_paused as well as nextmap
-//	Sys_PatchImageWithBlock(patchblock_SV_SendServerCommand, sizeof(patchblock_SV_SendServerCommand));  //Skip useless check for cvar: sv_dedicated
+	Com_Memset((void*)0x8174b9b, 0x90, 116); //In SV_SpawnServer()  Removal of sv_maxclients amd ui_maxclients Cvar_Register()
 	Com_Memset((void*)0x8204acf, 0x90, 16); //In ???() Skip useless check for cvar: sv_dedicated
 	Com_Memset((void*)0x8204ce9, 0x90, 16); //In ???() Skip useless check for cvar: sv_dedicated
 	Sys_PatchImageWithBlock(patchblock_NET_OOB_CALL1, sizeof(patchblock_NET_OOB_CALL1));
@@ -324,6 +162,15 @@ static byte patchblock_NET_OOB_CALL4[] = { 0x9B, 0x53, 0x17, 0x8,
 	Sys_PatchImageWithBlock(patchblock_NET_OOB_CALL3, sizeof(patchblock_NET_OOB_CALL3));
 	Sys_PatchImageWithBlock(patchblock_NET_OOB_CALL4, sizeof(patchblock_NET_OOB_CALL4));
 
+	Com_Memset((void*)0x81747b5, 0x90, 116); //In SV_???()  Removal of sv_maxclients amd ui_maxclients Cvar_Register()
+	Com_Memset((void*)0x817498c, 0x90, 116); //In SV_???()  Removal of sv_maxclients amd ui_maxclients Cvar_Register()
+
+	#ifndef PUNKBUSTER
+		Com_Memset((void*)0x8175255, 0x90, 5);
+		Com_Memset((void*)0x81751fe, 0x90, 5);
+		
+	#endif
+	
 	SetCall(0x8050ab1, Jump_CalcHeight);
 	SetJump(0x8050786, Jump_IsPlayerAboveMax);
 	SetJump(0x80507c6, Jump_ClampVelocity);
@@ -338,9 +185,11 @@ static byte patchblock_NET_OOB_CALL4[] = { 0x9B, 0x53, 0x17, 0x8,
 	SetCall(0x80b4957, G_RegisterCvarsCallback);
 	SetJump(0x80c0b5a, GScr_LoadScripts);
 	SetJump(0x80bc03e, ExitLevel); //ToDo Maybe build GScr_ExitLevel directly
+#ifdef PUNKBUSTER
 	SetJump(0x810e6ea, PbSvGameQuery);
 	SetJump(0x810e5dc, PbSvSendToClient);
 	SetJump(0x810e5b0, PbSvSendToAddrPort);
+#endif
 	SetJump(0x817e988, SV_ClipMoveToEntity);
 	SetJump(0x81d5a14, Sys_Error);
 	SetJump(0x8122724, Com_PrintMessage);
@@ -362,49 +211,91 @@ static byte patchblock_NET_OOB_CALL4[] = { 0x9B, 0x53, 0x17, 0x8,
 	SetJump(0x80a8068, ClientUserinfoChanged);
 	SetJump(0x81aa0be, BigInfo_SetValueForKey);
 	SetJump(0x81d6fca, Sys_Milliseconds);
+	SetJump(0x81d6f7c, Sys_MillisecondsRaw);
 	SetJump(0x81a9f8a, va);
 	SetJump(0x8131200, MSG_Init);
 	SetJump(0x8131320, MSG_InitReadOnly);
 	SetJump(0x8131294, MSG_InitReadOnlySplit);
 	SetJump(0x8140e9c, Sys_GetValue);
 	SetJump(0x8140efe, Sys_IsMainThread);
+	SetJump(0x8140f42, Sys_IsDatabaseThread);
 	SetJump(0x81d6be4, Sys_EnterCriticalSection);
 	SetJump(0x81d6bc8, Sys_LeaveCriticalSection);
+	SetJump(0x81d7282, Sys_ListFiles);
+	SetJump(0x81d6f06, Sys_FreeFileList);
 	SetJump(0x8177402, SV_SendServerCommand_IW);
 	SetJump(0x818e73c, FS_Restart);
 	SetJump(0x818726c, FS_FCloseFile);
 
+	SetJump(0x81a2944, Cvar_RegisterString);
+	SetJump(0x81a2d94, Cvar_RegisterBool);
+	SetJump(0x81a2cc6, Cvar_RegisterInt);
+	SetJump(0x81a2860, Cvar_RegisterEnum);
+	SetJump(0x81a2e6c, Cvar_RegisterFloat);
+	SetJump(0x81a2bea, Cvar_RegisterVec2);
+	SetJump(0x81a2b08, Cvar_RegisterVec3);
+	SetJump(0x81a2550, Cvar_RegisterColor);
 
+	SetJump(0x81a14fa, Cvar_SetString);
+	SetJump(0x81a1c6c, Cvar_SetBool);
+	SetJump(0x81a20c4, Cvar_SetInt);
+	SetJump(0x81a1fe0, Cvar_SetFloat);
+	SetJump(0x81a14c2, Cvar_SetColor);
+	SetJump(0x81a3422, Cvar_SetStringByName);
+	SetJump(0x81a3020, Cvar_SetFloatByName);
+	SetJump(0x81a3178, Cvar_SetIntByName);
+	SetJump(0x81a32dc, Cvar_SetBoolByName);
+	SetJump(0x81a3f66, Cvar_Set);
+
+	SetJump(0x819e7c0, Cvar_GetBool);
+	SetJump(0x819e810, Cvar_GetString);
+	SetJump(0x819e90a, Cvar_GetInt);
+
+	SetJump(0x819e6d0, Cvar_FindVar);
+	SetJump(0x819f328, Cvar_ForEach);
+	SetJump(0x81264f4, Cvar_InfoString_IW_Wrapper);
+	SetJump(0x81a1cc4, Com_LoadDvarsFromBuffer);
+
+	SetJump(0x8110ff8, Cbuf_AddText_Wrapper_IW);
+	SetJump(0x8110f3e, Cbuf_InsertText_Wrapper_IW);
+	SetJump(0x8111bea, Cmd_ExecuteSingleCommand);
+	
 	*(char*)0x8215ccc = '\n'; //adds a missing linebreak
 	*(char*)0x8222ebc = '\n'; //adds a missing linebreak
 	*(char*)0x8222ebd = '\0'; //adds a missing linebreak
 
 	FS_PatchFileHandleData();
 	Com_PatchError();
+	Cvar_PatchModifiedFlags();
 }
 
 
 static qboolean Sys_PatchImage()
 {
-
-	if(!Sys_MemoryProtectWrite((void*)(IMAGE_BASE + TEXT_SECTION_OFFSET), TEXT_SECTION_LENGTH))
-		return qfalse;
-
-	if(!Sys_MemoryProtectWrite((void*)(IMAGE_BASE + RODATA_SECTION_OFFSET), RODATA_SECTION_LENGTH))
-		return qfalse;
-
-
 	Sys_PatchImageData( );
-
-	if(!Sys_MemoryProtectExec((void*)(IMAGE_BASE + TEXT_SECTION_OFFSET), TEXT_SECTION_LENGTH))
-		return qfalse;
-
-	if(!Sys_MemoryProtectReadonly((void*)(IMAGE_BASE + RODATA_SECTION_OFFSET), RODATA_SECTION_LENGTH))
-		return qfalse;
-
 	return qtrue;
 }
 
+
+void Sys_ImageRunInitFunctions()
+{
+
+    int i;
+
+    void (*functions[])() = { (void*)0x81d8c1e, (void*)0x81b5d3c, (void*)0x81b104c, (void*)0x81a6040, (void*)0x8197bd4, (void*)0x8191cf4,
+                              (void*)0x818efac, (void*)0x80f32cc, (void*)0x80f1354, (void*)0x80893b0, (void*)0x80803cc, (void*)0x807fe7c,
+		                      (void*)0x807e95c, (void*)0x8076ee4, NULL };
+
+    for(i = 0; functions[i] != NULL; i++)
+    {
+        functions[i]();
+    }
+#ifdef PUNKBUSTER	
+	void (*PbSv_Initializer)() = (void*)0x810e59c;
+	PbSv_Initializer();
+#endif
+
+}
 
 /*
 =============
@@ -412,42 +303,80 @@ Sys_LoadImage
 
 =============
 */
-void Sys_LoadImage( ){
+qboolean Sys_LoadImage( ){
 
-    void *dl;
-    char *error;
-    char module[MAX_OSPATH];
+    byte *fileimage;
+    int len;
 
-    Com_sprintf(module, sizeof(module), "%s/%s", Sys_BinaryPath(), COD4_DLL);
+    /* Is this file here ? */
+    len = FS_FOpenFileRead(BIN_FILENAME, NULL);
+    if(len != DLLMOD_FILESIZE)
+    {/* Nope !*/
 
-    if(!Sys_LoadImagePrepareFile( module ))
+        Sec_Update( qtrue );
+        len = FS_FOpenFileRead(BIN_FILENAME, NULL);
+        if(len != DLLMOD_FILESIZE)
+        {/* Nope !*/
+            Com_PrintError("Failed to load the CoD4 Game. Can not startup the game\n");
+            return qfalse;
+        }
+    }
+    Sec_Update( qfalse );
+
+    len = FS_ReadFile(BIN_FILENAME, (void**)&fileimage);
+    if(!fileimage)
     {
-        printf("An error has occurred. Exiting...\n");
-        _exit(1);
+	Com_PrintError("Couldn't open "BIN_FILENAME". CoD4 can not startup.\n");
+	return qfalse;
+    }
+    if(len != DLLMOD_FILESIZE)
+    {
+	Com_PrintError(BIN_FILENAME" is corrupted! CoD4 can not startup.\n");
+	FS_FreeFile(fileimage);
+	return qfalse;
     }
 
-    dl = dlopen(module, RTLD_LAZY);
+    Com_Memcpy(BIN_SECT_TEXT_START, fileimage + BIN_SECT_TEXT_FOFFSET, BIN_SECT_TEXT_LENGTH);
+    Com_Memcpy(BIN_SECT_RODATA_START, fileimage + BIN_SECT_RODATA_FOFFSET, BIN_SECT_RODATA_LENGTH);
+    Com_Memcpy(BIN_SECT_DATA_START, fileimage + BIN_SECT_DATA_FOFFSET, BIN_SECT_DATA_LENGTH);
+    Com_Memset(BIN_SECT_PLT_START, 0xCC, BIN_SECT_PLT_LENGTH);
 
-    if(dl == NULL)
-    {
-        error = dlerror();
-        printf("Failed to load required module: %s Error: %s\n", module, error);
-        _exit(1);
+    Sys_CoD4Linker();
 
-    }
+    FS_FreeFile(fileimage);
 
-    if((int)(dlsym(dl, "_init") - (void*)0xA1A4) != 0x8040000)
-    {
-        printf("The module %s got loaded to an invalid image base address: 0x%X\n", module, (int)(dlsym(dl, "_init") - (void*)0xA1A4));
-        printf("It is expected that this image base address is located at 0x%X\n", 0x804000);
-        printf("Can not continue.\n");
-        _exit(1);
-    }
-
-    /* No retrieving of symbols where none are :( */
     if(!Sys_PatchImage())
     {
-        printf("Failed to patch module: %s\n", module);
-        _exit(1);
+        return qfalse;
     }
+    if(Sys_MemoryProtectExec(BIN_SECT_PLT_START, BIN_SECT_PLT_LENGTH) == qfalse)
+    {
+        FS_FreeFile(fileimage);
+        return qfalse;
+    }
+    if(Sys_MemoryProtectExec(BIN_SECT_TEXT_START, BIN_SECT_TEXT_LENGTH) == qfalse)
+    {
+        FS_FreeFile(fileimage);
+        return qfalse;
+    }
+    if(Sys_MemoryProtectReadonly(BIN_SECT_RODATA_START, BIN_SECT_RODATA_LENGTH) == qfalse)
+    {
+        FS_FreeFile(fileimage);
+        return qfalse;
+    }
+    if(Sys_MemoryProtectWrite(BIN_SECT_DATA_START, BIN_SECT_DATA_LENGTH) == qfalse)
+    {
+        FS_FreeFile(fileimage);
+        return qfalse;
+    }
+    if(Sys_MemoryProtectWrite(BIN_SECT_BSS_START, BIN_SECT_BSS_LENGTH) == qfalse)
+    {
+        FS_FreeFile(fileimage);
+        return qfalse;
+    }
+
+    Sys_ImageRunInitFunctions();
+
+    return qtrue;
 }
+

@@ -19,7 +19,7 @@
 ===========================================================================
 */
 
-
+#include "q_platform.h"
 
 #ifndef PLUGIN_HANDLER_H
 #define PLUGIN_HANDLER_H
@@ -37,13 +37,11 @@
 
 typedef void convariable_t; //For plugins
 
-#define P_P_F __attribute__((__noinline__)) __attribute__((__cdecl__))
+#define P_P_F __attribute__((__noinline__)) __attribute__((__cdecl__)) DLLEXPORT
 
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dlfcn.h>
-#include <execinfo.h>
 
 #include "cmd.h"        // xcommand_t
 #include "sys_net.h"    // netadr
@@ -52,6 +50,7 @@ typedef void convariable_t; //For plugins
 #include "qcommon_io.h" // Com_Printf
 #include "server.h"     // client_t
 #include "sys_net.h"    // Tcp stuff
+#include "scr_vm.h"
 
 #include "plugins/plugin_declarations.h"
 #include "plugin_events.h"
@@ -72,7 +71,7 @@ enum {
 };
 
 typedef struct{
-    char name[32];
+    char name[64];
     xcommand_t xcommand;
 }pluginCmd_t;
 
@@ -100,11 +99,13 @@ typedef struct{
     void (*OnUnload)();    // De-initialization function
 
     pluginCmd_t cmd[20];
+    pluginCmd_t scr_functions[36];
+    pluginCmd_t scr_methods[36];
     int cmds;
     int scriptfunctions;
     int scriptmethods;
     
-    char name[20];
+    char name[MAX_QPATH];
     
     pluginMem_t memory[PLUGIN_MAX_MALLOCS];
     pluginTcpClientSocket_t sockets[PLUGIN_MAX_SOCKETS];
@@ -119,9 +120,10 @@ typedef struct{
     qboolean enabled;
 
     void *lib_handle;
+    /*
     void *lib_start;
     long lib_size;
-
+    */
 }plugin_t;
 
 typedef struct{
@@ -129,6 +131,7 @@ typedef struct{
     int loadedPlugins;
     qboolean enabled;
     qboolean initializing_plugin;
+    int hasControl;
 }pluginWrapper_t;
 
 extern pluginWrapper_t pluginFunctions; // defined in plugin_handler.c
@@ -137,10 +140,10 @@ extern pluginWrapper_t pluginFunctions; // defined in plugin_handler.c
 //  Plugin Handler's own functions //
 // --------------------------------//
 
-void PHandler_Load(char*,size_t);
+void PHandler_Load(char* );
 void PHandler_Unload(int id);
-void PHandler_UnloadByName(char *name, size_t size);
-int PHandler_GetID(char *name, size_t size);
+void PHandler_UnloadByName(char *name);
+int PHandler_GetID(char *name);
 void PHandler_Event(int, ...);
 void PHandler_Init();
 void *PHandler_Malloc(int,size_t);
@@ -154,7 +157,8 @@ void PHandler_TcpCloseConnection(int,int);
 int PHandler_CallerID();
 void PHandler_ChatPrintf(int,char *,...);
 void PHandler_CmdExecute_f( void ); // fake server command for use in plugin commands
-
+void PHandler_ScrAddMethod(char *name, xfunction_t function, qboolean replace, int pID);
+void PHandler_ScrAddFunction(char *name, xfunction_t function, qboolean replace, int pID);
 // --------------------------------------//
 //  Plugin Handler's own server commands //
 // --------------------------------------//
@@ -165,3 +169,6 @@ void PHandler_PluginList_f( void );
 void PHandler_PluginInfo_f( void );
 
 #endif /*PLUGIN_HANDLER_H*/
+
+
+

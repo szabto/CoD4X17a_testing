@@ -20,11 +20,23 @@
 ===========================================================================
 */
 
-#include <malloc.h>
 #include <string.h>
+#include "q_shared.h"
 #include "qcommon_mem.h"
 
 #define MEM_SIZE 140 //Megabyte
+
+void* Mem_AlignedAlloc(unsigned int align, unsigned int size)
+{
+    void* newmem;
+
+    newmem = calloc(1, size + align);
+    if(newmem == NULL)
+        return NULL;
+
+    return (void*)((unsigned int)newmem + ((unsigned int)newmem % align));
+
+}
 
 void Mem_Init()
 {
@@ -32,8 +44,7 @@ void Mem_Init()
     void *memory;
     int sizeofmemory = 1024*1024*MEM_SIZE;
 
-
-    memory = memalign(0x1000, sizeofmemory);
+    memory = Mem_AlignedAlloc(0x1000, sizeofmemory);
     memset(memory, 0, sizeofmemory);
     memset((void*)0x1407e7a0, 0, 0x21C);
     *(int**)(0x1407e7a0) = memory;
@@ -53,10 +64,25 @@ CopyString
 char *CopyString( const char *in ) {
 	char    *out;
 
-	if ( !in[0] )
+/*	if ( !in[0] )
 		return "";
-
+*/
 	out = Z_Malloc( strlen( in ) + 1 );
 	strcpy( out, in );
 	return out;
+}
+
+
+
+void* Z_Malloc(int size)
+{
+	void *allocmem;
+	allocmem = malloc(size);
+	if(!allocmem)
+	{
+		Com_Error(ERR_FATAL, "System is out of memory!\n");
+		return NULL;
+	}
+	memset(allocmem, 0, size);
+	return allocmem;
 }

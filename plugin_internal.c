@@ -22,8 +22,7 @@
 
 
 #include "plugin_handler.h"
-
-
+#include "sys_main.h"
 /*==========================================*
  *                                          *
  *   Plugin Handler's internal functions    *
@@ -67,14 +66,14 @@ int PHandler_TcpGetData(int pID, int connection, void* buf, int size )
         Com_PrintWarning("Plugin_TcpGetData: called on a non open socket for plugin ID: #%d\n", pID);
         return -1;
     }
-    len = NET_TcpClientGetData(ptcs->sock, buf, size);
+    len = NET_TcpClientGetData(ptcs->sock, buf, &size);
 
     if(len == -1)
     {
         ptcs->sock = -1;
     }
 
-    return len;
+    return size;
 }
 
 qboolean PHandler_TcpSendData(int pID, int connection, void* data, int len)
@@ -283,7 +282,7 @@ void PHandler_LoadPlugin_f( void )
                 Com_Printf("Usage: %s <plugin file name without extension>\n", Cmd_Argv(0));
                 return;
         }
-        PHandler_Load(Cmd_Argv(1),128);
+        PHandler_Load(Cmd_Argv(1));
 }
 void PHandler_UnLoadPlugin_f()
 {
@@ -291,7 +290,7 @@ void PHandler_UnLoadPlugin_f()
         Com_Printf("Usage: %s <plugin file name without extension>\n", Cmd_Argv(0));
         return;
     }
-    PHandler_UnloadByName(Cmd_Argv(1),128);
+    PHandler_UnloadByName(Cmd_Argv(1));
 }
 void PHandler_PluginInfo_f()
 {
@@ -299,7 +298,7 @@ void PHandler_PluginInfo_f()
         Com_Printf("Usage: %s <plugin name>\n",Cmd_Argv(0));
         return;
     }
-    int id = PHandler_GetID(Cmd_Argv(1),strlen(Cmd_Argv(1)));
+    int id = PHandler_GetID(Cmd_Argv(1));
     int i;
     int vMajor, vMinor;
     pluginInfo_t info;
@@ -309,7 +308,7 @@ void PHandler_PluginInfo_f()
     }
     (*pluginFunctions.plugins[id].OnInfoRequest)(&info);
     Com_Printf("\n");
-    Com_Printf("\n^2Plugin name:^7\n%s\n\n",pluginFunctions.plugins[id].name);
+    Com_Printf("^2Plugin name:^7\n%s\n\n",pluginFunctions.plugins[id].name);
     vMajor = info.pluginVersion.major;
     vMinor = info.pluginVersion.minor;
     if(vMinor > 100){
@@ -317,15 +316,28 @@ void PHandler_PluginInfo_f()
             vMinor /= 10;
         }
     }
-    Com_Printf("\n^2Plugin version:^7\n%d.%d\n\n",vMajor,vMinor);
-    Com_Printf("\n^2Full plugin name:^7\n%s\n\n",info.fullName);
-    Com_Printf("\n^2Short plugin description:^7\n%s\n\n",info.shortDescription);
-    Com_Printf("\n^2Full plugin description:^7\n%s\n\n",info.longDescription);
-    Com_Printf("\n^2Plugin commands:^7\n\n");
-    for(i=0;i<pluginFunctions.plugins[id].cmds;++i){
+    Com_Printf("^2Plugin version:^7\n%d.%d\n\n",vMajor,vMinor);
+    Com_Printf("^2Full plugin name:^7\n%s\n\n",info.fullName);
+    Com_Printf("^2Short plugin description:^7\n%s\n\n",info.shortDescription);
+    Com_Printf("^2Full plugin description:^7\n%s\n\n",info.longDescription);
+    Com_Printf("^2Commands:^7\n\n");
+    for(i=0; i < pluginFunctions.plugins[id].cmds;++i){
         Com_Printf(" -%s\n",pluginFunctions.plugins[id].cmd[i].name);
     }
-    Com_Printf("\n^2Total of %d commands.^7\n\n",pluginFunctions.plugins[id].cmds);
+    Com_Printf("^2Total of %d commands.^7\n\n",pluginFunctions.plugins[id].cmds);
+
+    Com_Printf("^2Script Functions:^7\n\n");
+    for(i=0; i < pluginFunctions.plugins[id].scriptfunctions;++i){
+        Com_Printf(" -%s\n",pluginFunctions.plugins[id].scr_functions[i].name);
+    }
+    Com_Printf("^2Total of %d functions.^7\n\n",pluginFunctions.plugins[id].scriptfunctions);
+
+    Com_Printf("^2Script Methods:^7\n\n");
+    for(i=0; i < pluginFunctions.plugins[id].scriptmethods;++i){
+        Com_Printf(" -%s\n",pluginFunctions.plugins[id].scr_methods[i].name);
+    }
+    Com_Printf("^2Total of %d methods.^7\n\n",pluginFunctions.plugins[id].scriptmethods);
+
 }
 void PHandler_PluginList_f()
 {
@@ -364,11 +376,14 @@ void PHandler_PluginList_f()
 ======
 */
 
-P_P_F int PHandler_CallerID() // P_P_F for no-inline :P
+int PHandler_CallerID() // Can now be inlined, why not ^^
 {
+    return pluginFunctions.hasControl;
+    //Legacy code
+    /* 
     void *funcptrs[3];
     int i,j;
-    j = backtrace(funcptrs,3);
+    j = Sys_Backtrace(funcptrs,3);
     if(j<3){
     Com_Error(ERR_FATAL,"PHandler_CallerID: backtrace failed to return function pointers! Possible exploit detected! Terminating the server...\n");
     }
@@ -376,5 +391,100 @@ P_P_F int PHandler_CallerID() // P_P_F for no-inline :P
         if(pluginFunctions.plugins[i].lib_start < funcptrs[2] && pluginFunctions.plugins[i].lib_start + pluginFunctions.plugins[i].lib_size > funcptrs[2])
             return i;
     }
-    return -1;
+    return -1;*/
 }
+
+
+
+void PHandler_ScrAddFunction(char *name, xfunction_t function, qboolean replace, int pID)
+{
+    int i;
+
+    if(pID>=MAX_PLUGINS){
+        Com_Printf("Error: tried adding a script command for a plugin with non existent pID. pID supplied: %d.\n",pID);
+        return;
+    }else if(pID<0){
+        Com_Printf("Plugin Handler error: Plugin_ScrAddFunction or Plugin_ScrReplaceFunction called from not within a plugin or from a disabled plugin!\n");
+        return;
+    }
+    if(!pluginFunctions.plugins[pID].loaded){
+        Com_Printf("Error: Tried adding a command for not loaded plugin! PID: %d.\n",pID);
+    }
+    Com_Printf("Adding a plugin script function for plugin %d, command name: %s.\n",pID, name);
+    for(i = 0; i < (sizeof(pluginFunctions.plugins[0].scr_functions) / sizeof(pluginCmd_t)); i++ )
+    {
+        if(pluginFunctions.plugins[pID].scr_functions[i].xcommand == NULL)
+        {
+            break;
+        }
+    }
+    if(i == (sizeof(pluginFunctions.plugins[0].scr_functions) / sizeof(pluginCmd_t)))
+    {
+        Com_PrintError("Exceeded maximum number of scrip-functions (%d) for plugin\n", (sizeof(pluginFunctions.plugins[0].scr_functions) / sizeof(pluginCmd_t)));
+        return;
+    }
+    if(strlen(name) >= sizeof(pluginFunctions.plugins[0].scr_functions[0].name))
+    {
+        Com_PrintError("Exceeded maximum length of name for scrip-method: %s (%d) for plugin %s\n", name, sizeof(pluginFunctions.plugins[0].scr_functions[0].name) ,name);
+        return;
+    }
+    if(replace == qtrue)
+    {
+        Scr_RemoveFunction(name);
+    }
+    if(Scr_AddFunction(name, function, qfalse) == qfalse)
+    {
+        Com_PrintError("Failed to add this script function: %s for plugin\n", name);
+        return;
+    }
+    Q_strncpyz(pluginFunctions.plugins[pID].scr_functions[i].name, name, sizeof(pluginFunctions.plugins[0].scr_functions[0].name));
+    pluginFunctions.plugins[pID].scr_functions[i].xcommand = function;
+    pluginFunctions.plugins[pID].scriptfunctions ++;
+}
+
+void PHandler_ScrAddMethod(char *name, xfunction_t function, qboolean replace, int pID)
+{
+    int i;
+
+    if(pID>=MAX_PLUGINS){
+        Com_Printf("Error: tried adding a script command for a plugin with non existent pID. pID supplied: %d.\n",pID);
+        return;
+    }else if(pID<0){
+        Com_Printf("Plugin Handler error: Plugin_ScrAddMethod or Plugin_ScrReplaceMethod called from not within a plugin or from a disabled plugin!\n");
+        return;
+    }
+    if(!pluginFunctions.plugins[pID].loaded){
+        Com_Printf("Error: Tried adding a command for not loaded plugin! PID: %d.\n",pID);
+    }
+    Com_Printf("Adding a plugin script method for plugin %d, method name: %s.\n",pID, name);
+    for(i = 0; i < (sizeof(pluginFunctions.plugins[0].scr_methods) / sizeof(pluginCmd_t)); i++ )
+    {
+        if(pluginFunctions.plugins[pID].scr_methods[i].xcommand == NULL)
+        {
+            break;
+        }
+    }
+    if(i == (sizeof(pluginFunctions.plugins[0].scr_methods) / sizeof(pluginCmd_t)))
+    {
+        Com_PrintError("Exceeded maximum number of scrip-methods (%d) for plugin\n", (sizeof(pluginFunctions.plugins[0].scr_methods) / sizeof(pluginCmd_t)));
+        return;
+    }
+    if(strlen(name) >= sizeof(pluginFunctions.plugins[0].scr_methods[0].name))
+    {
+        Com_PrintError("Exceeded maximum length of name for scrip-method: %s (%d) for plugin %s\n", name, sizeof(pluginFunctions.plugins[0].scr_methods[0].name) ,name);
+        return;
+    }
+    if(replace == qtrue)
+    {
+        Scr_RemoveMethod(name);
+    }
+    if(Scr_AddMethod(name, function, qfalse) == qfalse)
+    {
+        Com_PrintError("Failed to add this script function: %s for plugin\n", name);
+        return;
+    }
+    Q_strncpyz(pluginFunctions.plugins[pID].scr_methods[i].name, name, sizeof(pluginFunctions.plugins[0].scr_methods[0].name));
+    pluginFunctions.plugins[pID].scr_methods[i].xcommand = function;
+    pluginFunctions.plugins[pID].scriptmethods ++;
+}
+

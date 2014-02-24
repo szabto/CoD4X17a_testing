@@ -59,13 +59,13 @@ __cdecl void ExitLevel( void ) {
 
 	if(*g_votedMapName->string){
 		if(*g_votedGametype->string)
-			Cbuf_AddText( EXEC_NOW, va("set g_gametype %s; map %s; set g_votedGametype \"\"; set g_votedMapName \"\"\n", g_votedGametype->string, g_votedMapName->string));
+			Cbuf_AddText( va("set g_gametype %s; map %s; set g_votedGametype \"\"; set g_votedMapName \"\"\n", g_votedGametype->string, g_votedMapName->string));
 		else
-			Cbuf_AddText( EXEC_NOW, va("map %s; set g_votedMapName \"\"\n", g_votedMapName->string));
+			Cbuf_AddText( va("map %s; set g_votedMapName \"\"\n", g_votedMapName->string));
 	}else if(*SV_GetNextMap()){
-		Cbuf_AddText( EXEC_NOW, "vstr nextmap\n" );
+		Cbuf_AddText( "vstr nextmap\n" );
 	}else{
-		Cbuf_AddText( EXEC_NOW, "map_rotate\n" );
+		Cbuf_AddText( "map_rotate\n" );
 	}
 
 	// reset all the scores so we don't enter the intermission again
@@ -123,15 +123,11 @@ void G_SetSavePersist(int val){
 
 __cdecl void G_RegisterCvarsCallback( ){
 
-    cvar_t** tmp;
-
     g_speed = Cvar_RegisterInt("g_speed", 190, 1, 6000, 0, "Player's global movement speed is set here");
     g_disabledefcmdprefix = Cvar_RegisterBool("g_disabledefcmdprefix", qtrue, 0, "Disable the interpretation of the !-sign as command");
     g_allowConsoleSay = Cvar_RegisterBool("g_allowConsoleSay", qtrue, CVAR_ARCHIVE, "Flag whether to allow chat from ingame console");
     //g_maxclients
-    tmp = (cvar_t**)(0x84bcfe8);
-    *tmp = Cvar_RegisterInt("sv_maxclients", 32, 1, 64, CVAR_ARCHIVE,"The maximum number of clients that can connect to a server");
-
+    *(cvar_t**)0x84bcfe8 = sv_maxclients;
 }
 
 /*

@@ -29,15 +29,12 @@
 #include "qcommon_logprint.h"
 #include "qcommon.h"
 #include "sys_cod4defs.h"
-#include "sys_con_tty.h"
 #include "filesystem.h"
 #include "sys_cod4loader.h"
 #include "sys_thread.h"
 #include "punkbuster.h"
 #include "server.h"
-#include "sec_init.h"
 #include "sec_main.h"
-#include <sys/resource.h>
 #include <libgen.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -45,16 +42,16 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/time.h>
-#include <wait.h>
-#include <fpu_control.h>
 
 #define MAX_QUED_EVENTS 256
 
 #define MAX_CMD 1024
-static char exit_cmdline[MAX_CMD] = "";
+static char exit_cmdline[MAX_CMD + MAX_OSPATH] = "";
 
 static char binaryPath[ MAX_OSPATH ] = { 0 };
 static char installPath[ MAX_OSPATH ] = { 0 };
+static char exeFilename[ MAX_OSPATH ] = { 0 };
+static char cmdline[MAX_CMD + MAX_OSPATH] = "";
 
 #ifndef MAXPRINTMSG
 #define MAXPRINTMSG 1024
@@ -172,9 +169,9 @@ static __attribute__ ((noreturn)) void Sys_Exit( int exitCode ) {
 		// possible race conditions?
 		// buggy kernels / buggy GL driver, I don't know for sure
 		// but it's safer to wait an eternity before and after the fork
-		sleep( 1 );
-		Sys_DoStartProcess( exit_cmdline );
-		sleep( 1 );
+		Sys_SleepSec( 1 );
+		Sys_ReplaceProcess( exit_cmdline );
+		Sys_SleepSec( 1 );
 	}
 
 	// We can't do this
@@ -192,44 +189,56 @@ void Sys_Quit( void )
 	Sys_Exit( 0 );
 }
 
+/*
+=================
+Sys_SetExitCmdline
+=================
+*/
+
+void Sys_SetExitCmdline(const char* cmdline)
+{
+	if(strlen(cmdline) >= sizeof(exit_cmdline))
+	{
+		Com_PrintError("Sys_SetExitCmdline: Exceeded length of %d characters.\n", sizeof(exit_cmdline) -1);
+	}
+	Q_strncpyz(exit_cmdline, cmdline, sizeof(exit_cmdline));
+}
 
 /*
 =================
-Sys_Print
+Sys_GetCommandline
 =================
 */
-void Sys_Print( const char *msg )
+
+const char* Sys_GetCommandline( void )
 {
-//	CON_LogWrite( msg );
-	CON_Print( msg );
+    return cmdline;
 }
 
 
-
-
 /*
 =================
-Sys_SigHandler
+Sys_DoSignalAction
 =================
 */
-void Sys_SigHandler( int signal )
+void Sys_DoSignalAction( int signal, const char* sigstring )
 {
 	static qboolean signalcaught = qfalse;
+	char termmsg[MAX_STRING_CHARS];
 
-	fprintf( stderr, "Received signal: %s, exiting...\n",
-		strsignal(signal) );
+	Com_Printf( "Received signal: %s, exiting...\n", sigstring );
 
 	if( signalcaught )
 	{
-		fprintf( stderr, "DOUBLE SIGNAL FAULT: Received signal: %s, exiting...\n",
-			strsignal(signal));
+		Com_Printf( "DOUBLE SIGNAL FAULT: Received signal: %s, exiting...\n", sigstring);
 	}
 
 	else
 	{
 		signalcaught = qtrue;
-		Com_Printf("Server received signal: %s\nShutting down server...\n", strsignal(signal));
-		SV_Shutdown(va("\nServer received signal: %s\nTerminating server...", strsignal(signal)) );
+		Com_Printf("Server received signal: %s\nShutting down server...\n", sigstring);
+		Com_sprintf(termmsg, sizeof(termmsg), "\nServer received signal: %s\nTerminating server...", sigstring);
+		SV_Shutdown( termmsg );
 
 		Sys_EnterCriticalSection( 2 );
 
@@ -244,27 +253,6 @@ void Sys_SigHandler( int signal )
 }
 
 
-void Sys_TermProcess( )
-{
-    int status;
-    wait(&status);
-}
-
-
-
-/*
-=================
-Sys_ConsoleInput
-
-Handle new console input
-=================
-*/
-char *Sys_ConsoleInput(void)
-{
-	return CON_Input( );
-}
-
-
 void Sys_PrintBinVersion( const char* name ) {
 
 	char* sep = "==============================================================";
@@ -274,39 +262,6 @@ void Sys_PrintBinVersion( const char* name ) {
 
 	fprintf( stdout, " local install: %s\n", name );
 	fprintf( stdout, "%s\n\n", sep );
-}
-
-
-
-
-void Sys_ParseArgs( int argc, char* argv[] ) {
-	if ( argc == 2 ) {
-		if ( ( !strcmp( argv[1], "--version" ) )
-			 || ( !strcmp( argv[1], "-v" ) ) ) {
-			Sys_PrintBinVersion( argv[0] );
-			Sys_Exit( 0 );
-		}
-	}
-}
-
-
-
-/*
-==============
-Sys_PlatformInit
-
-Unix specific initialisation
-==============
-*/
-void Sys_PlatformInit( void )
-{
-	signal( SIGHUP, Sys_SigHandler );
-	signal( SIGQUIT, Sys_SigHandler );
-	signal( SIGTRAP, Sys_SigHandler );
-	signal( SIGIOT, Sys_SigHandler );
-	signal( SIGBUS, Sys_SigHandler );
-//	signal( SIGCHLD, Sys_TermProcess );
-
 }
 
 
@@ -329,7 +284,7 @@ __cdecl void QDECL Sys_Error( const char *fmt, ... ) {
 	Q_vsnprintf (msg, sizeof(msg), fmt, argptr);
 	va_end (argptr);
 
-	sprintf(buffer, "Sys_Error: %s\n", msg);
+	Com_sprintf(buffer, sizeof(buffer), "\nSys_Error: %s\n", msg);
 
 	//Print the error to our console
 	Sys_Print( buffer );
@@ -341,7 +296,45 @@ __cdecl void QDECL Sys_Error( const char *fmt, ... ) {
 		fclose(fdout);
 	}
 
+	Sys_WaitForErrorConfirmation();
+	
 	Sys_Exit( 1 ); // bk010104 - use single exit point.
+}
+
+
+/*
+================
+Sys_Init
+================
+*/
+void Sys_Init()
+{
+	Cvar_RegisterString("arch", OS_STRING "-" ARCH_STRING, CVAR_ROM, "System platform");
+	Cvar_RegisterString("username", Sys_GetUsername(), CVAR_ROM, "Current username");
+
+}
+
+/*
+=================
+Sys_Print
+=================
+*/
+void Sys_Print( const char *msg )
+{
+//	CON_LogWrite( msg );
+	CON_Print( msg );
+}
+
+/*
+=================
+Sys_ConsoleInput
+
+Handle new console input
+=================
+*/
+char *Sys_ConsoleInput(void)
+{
+	return CON_Input( );
 }
 
 
@@ -357,10 +350,31 @@ void Sys_SetBinaryPath(const char *path)
 
 /*
 =================
+Sys_SetExeFile
+=================
+*/
+void Sys_SetExeFile(const char *filepath)
+{
+	Q_strncpyz(exeFilename, filepath, sizeof(exeFilename));
+}
+
+/*
+=================
+Sys_ExeFile
+=================
+*/
+const char* Sys_ExeFile( void )
+{
+	return exeFilename;
+}
+
+
+/*
+=================
 Sys_BinaryPath
 =================
 */
-char *Sys_BinaryPath(void)
+const char *Sys_BinaryPath(void)
 {
 	return binaryPath;
 }
@@ -403,7 +417,7 @@ char *Sys_DefaultCDPath(void)
 Sys_DefaultAppPath
 =================
 */
-char *Sys_DefaultAppPath(void)
+const char *Sys_DefaultAppPath(void)
 {
 	return Sys_BinaryPath();
 }
@@ -418,32 +432,12 @@ char *Sys_DefaultAppPath(void)
 #endif
 
 
+int Sys_Main(char* commandLine){
 
-
-__cdecl int main(int argc, char* argv[]){
-
-    int i;
-    char commandLine[MAX_STRING_CHARS] = { 0 };
-
-
-    uid_t uid = getuid();
-    if( uid == 0 || uid != geteuid() ) { // warn user that he/she's operating as a privliged user
-        printf( "********************************************************\n" );    
-        printf( "***** RUNNING SERVER AS A ROOT IS GENERALLY UNSAFE *****\n" );
-        printf( "********************************************************\n\n" );  
-    }
-    
-    // go back to real user for config loads
-    seteuid( uid );
-
-    Sys_ParseArgs( argc, argv );
-
-    Sys_SetBinaryPath( Sys_Dirname( argv[ 0 ] ) );
+    Q_strncpyz(cmdline, commandLine, sizeof(cmdline));
 
     Sys_SetDefaultInstallPath( DEFAULT_BASEDIR );
 
-    Sys_LoadImage( );
-    Sec_Init(argv);
     Sys_TimerInit( );
 
     Sys_PlatformInit( );
@@ -452,50 +446,16 @@ __cdecl int main(int argc, char* argv[]){
 
     Sys_ThreadMain();
 
-    Com_InitParse();
-
-    commandLine[0] = 0;
-
-    // Concatenate the command line for passing to Com_Init
-    for( i = 1; i < argc; i++ )
-    {
-        const qboolean containsSpaces = strchr(argv[i], ' ') != NULL;
-        if (containsSpaces)
-            Q_strcat( commandLine, sizeof( commandLine ), "\"" );
-
-        Q_strcat( commandLine, sizeof( commandLine ), argv[ i ] );
-
-        if (containsSpaces)
-            Q_strcat( commandLine, sizeof( commandLine ), "\"" );
-
-        Q_strcat( commandLine, sizeof( commandLine ), " " );
-    }
-
     CON_Init();
 
 /*    Sys_ImageFindConstant();   */
-
-    Sys_InitCrashDumps();
-
+    
     Com_Init( commandLine );
-
-    signal( SIGILL, Sys_SigHandler );
-    signal( SIGFPE, Sys_SigHandler );
-/*    signal( SIGSEGV, Sys_SigHandler );  No corefiles get generated with it */
-    signal( SIGTERM, Sys_SigHandler );
-    signal( SIGINT, Sys_SigHandler );
-
-
-    if(!PbServerInitialize()){
-        Com_Printf("Unable to initialize PunkBuster.  PunkBuster is disabled.\n");
-    }
 
     while ( 1 )
     {
-        static int fpu_word = _FPU_DEFAULT;
-        _FPU_SETCW( fpu_word );
-
         Com_Frame();
     }
 
 }
+

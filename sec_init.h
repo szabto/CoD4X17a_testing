@@ -24,5 +24,6 @@
 #include "sec_sign.h"
 #include "sec_update.h"
 
-void Sec_Init(char *commandLine[]);
+void Sec_Init( void );
+qboolean Sec_Initialized();
 #endif

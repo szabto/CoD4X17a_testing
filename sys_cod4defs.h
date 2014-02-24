@@ -25,20 +25,20 @@
 #define __SYS_COD4DEFS_H__
 
 
-#define COD4_DLL "cod4_lnxded.so"
-#define COD4_BINNAME "cod4_lnxded"
+#define EXECUTABLE_NAME "cod4x17a_dedrun"
 
-#define TEXT_SECTION_OFFSET 0x2c20
-#define TEXT_SECTION_LENGTH 0x1bf1a4
-#define RODATA_SECTION_OFFSET 0x1c1e00
-#define RODATA_SECTION_LENGTH 0x36898
-#define DATA_SECTION_OFFSET 0x222580
-#define DATA_SECTION_OFFSET_FIX 0x1000
-#define DATA_SECTION_LENGTH 0x9454
-#define IMAGE_BASE 0x8048000
+#define PRODUCT_NAME				"Call of Duty 4 - Modern Warfare Dedicated Server"
+#define BASEGAME					"main"
+#define CLIENT_WINDOW_TITLE     	"Call of Duty 4 - Modern Warfare Dedicated Server"
+#define CLIENT_WINDOW_MIN_TITLE 	"CoD4 MW"
 
+#define PORT_MASTER 20810
+#define MASTER_SERVER_NAME "cod4master.activision.com"
+#define MASTER_SERVER_NAME2 "cod4master.iceops.in"
+#define HEARTBEAT_GAME "COD-4"
+#define HEARTBEAT_DEAD "flatline"
 
-
+  #define PRODUCT_VERSION "1.0"
 
 #define Q3_VERSION "1.7a"
 #define GAME_STRING "CoD4 X"

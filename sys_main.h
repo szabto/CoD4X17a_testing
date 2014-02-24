@@ -27,7 +27,7 @@
 
 #include "q_shared.h"
 #include <setjmp.h>
-
+#include <inttypes.h>
 
 unsigned int Sys_Milliseconds( void );
 unsigned long long Sys_MillisecondsLong( void );
@@ -38,7 +38,6 @@ unsigned long long Sys_Microseconds( void );
 int Sys_Seconds( void );
 void Sys_Quit( void );
 void Sys_Print( const char *msg );
-void Sys_SigHandler( int signal );
 void Sys_TermProcess(void);
 char *Sys_ConsoleInput(void);
 void Sys_AnsiColorPrint( const char *msg );
@@ -46,10 +45,11 @@ void Sys_PrintBinVersion( const char* name );
 void Sys_ParseArgs( int argc, char* argv[] );
 __cdecl void QDECL Sys_Error( const char *fmt, ... );
 void Sys_SetBinaryPath(const char *path);
-char *Sys_BinaryPath(void);
+const char *Sys_BinaryPath(void);
+const char *Sys_ExeFile(void);
 void Sys_SetDefaultInstallPath(const char *path);
 char *Sys_DefaultInstallPath(void);
-char *Sys_DefaultAppPath(void);
+const char *Sys_DefaultAppPath(void);
 //sys_unix.c
 qboolean Sys_RandomBytes( byte *string, int len );
 void Sys_DoStartProcess( char *cmdline );
@@ -66,5 +66,34 @@ char *Sys_DefaultCDPath( void );
 qboolean Sys_DirectoryHasContent( const char* dir );
 char **Sys_ListFiles( const char *directory, const char *extension, char *filter, int *numfiles, qboolean wantsubs );
 void Sys_FreeFileList( char **list );
+const char* Sys_GetUsername();
+void Sys_SetExitCmdline(const char *);
+void Sys_DoSignalAction(int signal, const char *);
+void Sys_SetExeFile(const char *);
+int Sys_Main(char* commandLine);
+const char* Sys_GetCommandline( void );
+void Sys_ReplaceProcess( char *cmdline );
+void Sys_PlatformInit();
+const char *Sys_StripAppBundle( const char *dir );
+const char *Sys_Basename( char *path );
+qboolean Sys_Mkdir( const char *path );
+qboolean Sys_SetPermissionsExec(const char* ospath);
+void Sys_WaitForErrorConfirmation(void);
+
+void Sys_SleepSec(int seconds);
+int Sys_Backtrace(void** buffer, int size);
+void Sys_EventLoop(void);
+uint32_t Sys_MillisecondsRaw();
+void* Sys_LoadLibrary(const char* dlfile);
+void Sys_CloseLibrary(void* dlhandle);
+void* Sys_GetProcedure(const char* procname);
+
+/* Includes for system console */
+void CON_Shutdown( void );
+void CON_Init(void);
+char *CON_Input( void );
+void CON_Print( const char *msg );
+
 #endif
+
 

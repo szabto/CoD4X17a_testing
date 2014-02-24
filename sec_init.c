@@ -21,6 +21,9 @@
 
 #include "sec_init.h"
 #include "sec_main.h"
+
+qboolean initialized = qfalse;;
+
 /*
 void Sec_MakeCert_f(){
     if(Cmd_Argc() != 4){
@@ -52,7 +55,12 @@ void Sec_MakeCert_f(){
     
 }*/
 
-void Sec_Init(char *commandLine[]){
+qboolean Sec_Initialized(){
+    return initialized;
+}
+
+void Sec_Init(void)
+{
     int result,i;
     //Cmd_AddCommand("createCert", Sec_MakeCert_f);
     sec_hashes[SEC_HASH_SHA1].name="SHA1";
@@ -124,20 +132,16 @@ void Sec_Init(char *commandLine[]){
     sec_hashes[SEC_HASH_TIGER].hmac_block=NULL;
     SecCryptErr = CRYPT_OK;
     
-    printf("\nSec_Init: initializing...\n\n");
-    printf("Initialising Crypto...\n");
+    Com_Printf("--- Crypto Initializing ---\n");
     for(i = 0;i<SEC_HASH_SIZE__;++i){
 	result = sec_hashes[i].test();
-	printf("Testing %s hash function - %s.\n",sec_hashes[i].name,result==CRYPT_OK ? "positive" : "negative");
+	Com_Printf("Testing %s hash function - %s.\n",sec_hashes[i].name,result==CRYPT_OK ? "positive" : "negative");
 	if(result != CRYPT_OK){
-	    printf("ERROR: Sec module failed to initialize! Error code: %s. Shutting down...\n",Sec_CryptErrStr(result));
-    	    exit(1);
+	    Com_Error(ERR_FATAL, "Sec module failed to initialize! Error code: %s. Shutting down...\n", Sec_CryptErrStr(result));
+    	    return;
 	}
     }
-    
-    printf("Crypto initialized.\n");
-    Sec_Update(commandLine);
-    
-    printf("\nSec_Init: Initialization complete.\n\n");
+    initialized = qtrue;
+    Com_Printf("--- Crypto Initialization Complete ---\n");
     return;
 }

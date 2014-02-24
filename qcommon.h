@@ -27,13 +27,22 @@
 
 #include <time.h>
 #include "cvar.h"
+#include "qcommon_io.h"
+
+
+typedef enum {
+	// bk001129 - make sure SE_NONE is zero
+	SE_NONE = 0,    // evTime is still valid
+	SE_CONSOLE, // evPtr is a char*
+	SE_PACKET   // evPtr is a netadr_t followed by data bytes to evPtrLength
+} sysEventType_t;
+
+void Com_QueueEvent( int time, sysEventType_t type, int value, int value2, int ptrLength, void *ptr );
 
 void __cdecl Com_InitParse( void );
-void __cdecl Com_InitCvars(void);
 void __cdecl Com_Restart(void);
 void __cdecl Com_WriteConfig_f(void);
 void __cdecl Com_WriteDefaults_f(void);
-void __cdecl Com_DvarDump(int, int);
 void __cdecl Com_Close(void);
 int __cdecl Com_Filter( char* filter, char *name, int casesensitive);
 
@@ -52,14 +61,18 @@ unsigned long long Com_GetUsecFrameTime(void);
 
 extern unsigned long long com_frameTime;
 extern unsigned long long com_uFrameTime;
+extern qboolean gamebinary_initialized;
 extern cvar_t* com_dedicated;
 extern cvar_t* com_timescale;
 extern cvar_t* com_sv_running;
 extern cvar_t* com_logfile;
 extern cvar_t* com_developer;
 extern cvar_t* com_useFastfiles;
+extern cvar_t* com_animCheck;
+extern cvar_t* com_version;
 
 int Com_IsDeveloper();
+qboolean Com_LoadBinaryImage();
 
 #define MAXPRINTMSG 4096
 #define	MAX_RELIABLE_COMMANDS	128	// max string commands buffered for restransmit
@@ -72,3 +85,4 @@ int Com_IsDeveloper();
 
 
 #endif
+

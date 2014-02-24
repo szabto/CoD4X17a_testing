@@ -638,6 +638,7 @@ static void Cmd_BanPlayer_f() {
     char* guid = NULL;
     clanduid_t cl = { 0 };
     char banreason[256];
+    char dropmsg[MAX_STRING_CHARS];
 
     if ( Cmd_Argc() < 3) {
         if(Q_stricmp(Cmd_Argv(0), "banUser") || Q_stricmp(Cmd_Argv(0), "banClient")){
@@ -726,14 +727,16 @@ static void Cmd_BanPlayer_f() {
             if(psvs.useuids){
                 Com_Printf( "Banrecord added for player: %s uid: %i\n", cl.cl->name, cl.uid);
                 SV_PrintAdministrativeLog( "banned player: %s uid: %i with the following reason: %s", cl.cl->name, cl.uid, banreason);
-                SV_DropClient(cl.cl, va("You have got a permanent ban onto this gameserver\nYour ban will %s expire\nYour UID is: %i    Banning admin UID is: %i\nReason for this ban:\n%s",
-                    "never", cl.uid, SV_RemoteCmdGetInvokerUid(), banreason));
+                Com_sprintf(dropmsg, sizeof(dropmsg), "You have got a permanent ban onto this gameserver\nYour ban will %s expire\nYour UID is: %i    Banning admin UID is: %i\nReason for this ban:\n%s",
+                    "never", cl.uid, SV_RemoteCmdGetInvokerUid(), banreason);
+                SV_DropClient(cl.cl, dropmsg);
 
             }else{
                 Com_Printf( "Banrecord added for player: %s guid: %s\n", cl.cl->name, cl.cl->pbguid);
                 SV_PrintAdministrativeLog( "banned player: %s guid: %s with the following reason: %s", cl.cl->name, cl.cl->pbguid, banreason);
-                SV_DropClient(cl.cl, va("You have got a permanent ban onto this gameserver\nYour GUID is: %s    Banning admin GUID is: %s\nReason for this ban:\n%s",
-                    cl.cl->pbguid, SV_RemoteCmdGetInvokerGuid(), banreason));
+                Com_sprintf(dropmsg, sizeof(dropmsg), "You have got a permanent ban onto this gameserver\nYour GUID is: %s    Banning admin GUID is: %s\nReason for this ban:\n%s",
+                    cl.cl->pbguid, SV_RemoteCmdGetInvokerGuid(), banreason);
+                SV_DropClient(cl.cl, dropmsg);
 
                 if(cl.cl->authentication < 1)
                     SV_PlayerAddBanByip(&cl.cl->netchan.remoteAddress, banreason, 0, cl.cl->pbguid, 0, 0x7FFFFFFF);
@@ -780,6 +783,7 @@ static void Cmd_TempBanPlayer_f() {
     int length;
     char buff[8];
     char *guid = NULL;
+    char dropmsg[MAX_STRING_CHARS];
 
     if ( Cmd_Argc() < 4) {
 
@@ -889,14 +893,16 @@ static void Cmd_TempBanPlayer_f() {
 
                 Com_Printf( "Banrecord added for player: %s uid: %i\n", cl.cl->name, cl.uid);
                 SV_PrintAdministrativeLog( "temporarily banned player: %s uid: %i until %s with the following reason: %s", cl.cl->name, cl.uid, endtime, banreason);
-                SV_DropClient(cl.cl, va("You have got a temporarily ban onto this gameserver\nYour ban will expire on: %s UTC\nYour UID is: %i    Banning admin UID is: %i\nReason for this ban:\n%s",
-                    endtime, cl.uid, SV_RemoteCmdGetInvokerUid(), banreason));
+                Com_sprintf(dropmsg, sizeof(dropmsg), "You have got a temporarily ban onto this gameserver\nYour ban will expire on: %s UTC\nYour UID is: %i    Banning admin UID is: %i\nReason for this ban:\n%s",
+                    endtime, cl.uid, SV_RemoteCmdGetInvokerUid(), banreason);
+                SV_DropClient(cl.cl, dropmsg);
 
             }else{
                 Com_Printf( "Banrecord added for player: %s guid: %s\n", cl.cl->name, cl.cl->pbguid);
                 SV_PrintAdministrativeLog( "temporarily banned player: %s guid: %s until %s with the following reason: %s", cl.cl->name, cl.cl->pbguid, endtime, banreason);
-                SV_DropClient(cl.cl, va("You have got a temporarily ban onto this gameserver\nYour ban will expire on: %s UTC\nYour GUID is: %s    Banning admin UID is: %s\nReason for this ban:\n%s",
-                    endtime, cl.cl->pbguid, SV_RemoteCmdGetInvokerGuid(), banreason));
+                Com_sprintf(dropmsg, sizeof(dropmsg), "You have got a temporarily ban onto this gameserver\nYour ban will expire on: %s UTC\nYour GUID is: %s    Banning admin UID is: %s\nReason for this ban:\n%s",
+                    endtime, cl.cl->pbguid, SV_RemoteCmdGetInvokerGuid(), banreason);
+                SV_DropClient(cl.cl, dropmsg);
 
                 if(cl.cl->authentication < 1)
                     SV_PlayerAddBanByip(&cl.cl->netchan.remoteAddress, banreason, 0, cl.cl->pbguid, 0, expire);
@@ -939,6 +945,7 @@ static void Cmd_KickPlayer_f() {
     int i;
     clanduid_t cl;
     char kickreason[256];
+    char dropmsg[MAX_STRING_CHARS];
 
     if ( Cmd_Argc() < 2) {
         Com_Printf( "Usage: kick < user (online-playername | online-playerslot | uid (@#  or  u#)) > <Reason for this kick (max 126 chars) (optional)>\n" );
@@ -973,16 +980,18 @@ static void Cmd_KickPlayer_f() {
             SV_PrintAdministrativeLog( "kicked player: %s unknown uid with the following reason: %s", cl.cl->name, kickreason);
         }
 
-        SV_DropClient(cl.cl, va("Player kicked:\nAdmin UID is: %i\nReason for this kick:\n%s",
-         SV_RemoteCmdGetInvokerUid(), kickreason));
+        Com_sprintf(dropmsg, sizeof(dropmsg), "Player kicked:\nAdmin UID is: %i\nReason for this kick:\n%s",
+         SV_RemoteCmdGetInvokerUid(), kickreason);
+        SV_DropClient(cl.cl, dropmsg);
 
     }else{
 
         Com_Printf( "Player kicked: %s ^7guid: %s\nReason: %s\n", cl.cl->name, cl.cl->pbguid, kickreason);
         SV_PrintAdministrativeLog( "kicked player: %s guid: %s with the following reason: %s", cl.cl->name, cl.cl->pbguid, kickreason);
 
-        SV_DropClient(cl.cl, va("Player kicked:\nAdmin GUID is: %s\nReason for this kick:\n%s",
-         SV_RemoteCmdGetInvokerGuid(), kickreason));
+        Com_sprintf(dropmsg, sizeof(dropmsg), "Player kicked:\nAdmin GUID is: %s\nReason for this kick:\n%s",
+         SV_RemoteCmdGetInvokerGuid(), kickreason);
+        SV_DropClient(cl.cl, dropmsg);
     }
 
 }
@@ -993,7 +1002,7 @@ SV_DumpBanlist_f
 ================
 */
 
-void SV_DumpBanlist_f(){
+static void SV_DumpBanlist_f(){
     SV_DumpBanlist();
 }
 
@@ -1181,7 +1190,7 @@ static void Cmd_ExecuteTranslatedCommand_f(){
 
     *tmp = 0;
     Com_DPrintf("String to Execute: %s\n", outstr);
-    Cbuf_AddText(EXEC_NOW, outstr);
+    Cbuf_AddText( outstr);
 }
 
 
@@ -1238,7 +1247,7 @@ SV_StopRecording_f
 stop recording a demo
 ====================
 */
-void SV_StopRecord_f( void ) {
+static void SV_StopRecord_f( void ) {
 
 	clanduid_t cl;
 	int i;
@@ -1278,7 +1287,7 @@ Begins recording a demo from the current position
 ====================
 */
 //static char demoName[MAX_QPATH];        // compiler bug workaround
-void SV_Record_f( void ) {
+static void SV_Record_f( void ) {
 
 	char* s;
 	char name[MAX_QPATH];
@@ -1340,7 +1349,7 @@ void SV_Record_f( void ) {
 
 
 
-void SV_ShowRules_f(){
+static void SV_ShowRules_f(){
 
     unsigned int clnum;
     client_t* cl;
@@ -1366,7 +1375,7 @@ void SV_ShowRules_f(){
     }
 }
 
-void SV_AddRule_f(){
+static void SV_AddRule_f(){
 
     if ( Cmd_Argc() != 2) {
         Com_Printf( "Usage: addRuleMsg <\"text here in quotes\">\n" );
@@ -1376,7 +1385,7 @@ void SV_AddRule_f(){
     G_AddRule( Cmd_Argv(1));
 }
 
-void SV_AddAdvert_f(){
+static void SV_AddAdvert_f(){
 
     if ( Cmd_Argc() != 2) {
         Com_Printf( "Usage: addAdvertMsg <\"text here in quotes\">\n" );
@@ -1385,7 +1394,7 @@ void SV_AddAdvert_f(){
     G_AddAdvert( Cmd_Argv(1));
 }
 
-void SV_ClearAllMessages_f(){
+static void SV_ClearAllMessages_f(){
 
     G_ClearAllMessages();
 
@@ -1401,7 +1410,7 @@ Examine the serverinfo string
 */
 static void SV_Serverinfo_f( void ) {
 	Com_Printf( "Server info settings:\n" );
-	Info_Print( Cvar_InfoString( 0, CVAR_SERVERINFO ) );
+	Info_Print( Cvar_InfoString( CVAR_SERVERINFO ) );
 }
 
 
@@ -1414,7 +1423,7 @@ Examine or change the serverinfo string
 */
 static void SV_Systeminfo_f( void ) {
 	Com_Printf( "System info settings:\n" );
-	Info_Print( Cvar_InfoString( 0, CVAR_SYSTEMINFO ) );
+	Info_Print( Cvar_InfoString( CVAR_SYSTEMINFO ) );
 }
 
 //===========================================================
@@ -1529,16 +1538,17 @@ static void SV_MapRotate_f( void ) {
 			}
 			Q_strncpyz(map, maplist, len+1);
 
-			if(!SV_Map(map)){ //Load the level
-				Com_PrintError("Invalid mapname at %s\nRestarting current map\n", maplist);
-				SV_MapRestart( qfalse );
-			}
 			maplist = Com_ParseGetToken(maplist); //Pop off the last map-name
 
 			if(maplist == NULL)
 				maplist = "";
 
 			Cvar_SetString(sv_mapRotationCurrent, maplist); //Set the cvar with one map less
+
+			if(!SV_Map(map)){ //Load the level
+				Com_PrintError("Invalid mapname at %s %s\nRestarting current map\n", map, maplist);
+				SV_MapRestart( qfalse );
+			}
 			return;
 		}else{
 			Com_PrintError("Broken maprotation at: %s\n", maplist);
@@ -1600,7 +1610,7 @@ static void SV_SetPerk_f( void ){
 
 
 
-void SV_TestTimeOverrun( void ){
+static void SV_TestTimeOverrun( void ){
 
 	svs.time = 0x6ffeffff;
 
@@ -1608,7 +1618,7 @@ void SV_TestTimeOverrun( void ){
 
 
 
-void SV_GetCurrentServeTimer(){
+static void SV_GetCurrentServeTimer(){
 
 	Com_Printf("Server Time is : %x\n", svs.time);
 }
@@ -1844,6 +1854,23 @@ static void SV_ListAdmins_f()
 
 }
 
+static void SV_ShowConfigstring_f()
+{
+    char buffer[8192];
+    int index;
+
+    buffer[0] = 0;
+
+    if ( Cmd_Argc() != 2 ) {
+	Com_Printf( "Usage: showconfigstring <index>\n" );
+	return;
+    }
+
+    index = atoi(Cmd_Argv(1));
+    SV_GetConfigstring(index, buffer, sizeof(buffer));
+    Com_Printf("Configstring is: %s\n", buffer);
+}
+
 
 void SV_AddOperatorCommands(){
 
@@ -1854,22 +1881,12 @@ void SV_AddOperatorCommands(){
 	}
 	initialized = qtrue;
 
-//	Cmd_AddCommand ("stance", SV_SetStance_f);
-
-	Cmd_AddCommand ("systeminfo", SV_Systeminfo_f);
-	Cmd_AddCommand ("serverinfo", SV_Serverinfo_f);
 	Cmd_AddCommand ("killserver", SV_KillServer_f);
 	Cmd_AddCommand ("setPerk", SV_SetPerk_f);
-	Cmd_AddCommand ("map", SV_Map_f);
 	Cmd_AddCommand ("map_restart", SV_MapRestart_f);
 	Cmd_AddCommand ("fast_restart", SV_FastRestart_f);
-	Cmd_AddCommand ("map_rotate", SV_MapRotate_f);
-	Cmd_AddCommand ("addAdvertMsg", SV_AddAdvert_f);
-	Cmd_AddCommand ("addRuleMsg", SV_AddRule_f);
-	Cmd_AddCommand ("clearAllMsg", SV_ClearAllMessages_f);
 	Cmd_AddCommand ("rules", SV_ShowRules_f);
 	Cmd_AddCommand ("heartbeat", SV_Heartbeat_f);
-	Cmd_AddCommand ("dumpbanlist", SV_DumpBanlist_f);
 	Cmd_AddCommand ("kick", Cmd_KickPlayer_f);
 	Cmd_AddCommand ("clientkick", Cmd_KickPlayer_f);
 	Cmd_AddCommand ("onlykick", Cmd_KickPlayer_f);
@@ -1882,11 +1899,6 @@ void SV_AddOperatorCommands(){
 	Cmd_AddCommand ("banUser", Cmd_BanPlayer_f);
 	Cmd_AddCommand ("banClient", Cmd_BanPlayer_f);
 	Cmd_AddCommand ("ministatus", SV_MiniStatus_f);
-	Cmd_AddCommand ("writenvcfg", NV_WriteConfig);
-	Cmd_AddCommand ("setAdmin", SV_SetAdmin_f);
-	Cmd_AddCommand ("unsetAdmin", SV_UnsetAdmin_f);
-	Cmd_AddCommand ("setCmdMinPower", SV_SetPermission_f);
-	Cmd_AddCommand ("adminlist", SV_ListAdmins_f);
 	Cmd_AddCommand ("say", SV_ConSayChat_f);
 	Cmd_AddCommand ("consay", SV_ConSayConsole_f);
 	Cmd_AddCommand ("screensay", SV_ConSayScreen_f);
@@ -1894,23 +1906,113 @@ void SV_AddOperatorCommands(){
 	Cmd_AddCommand ("contell", SV_ConTellConsole_f);
 	Cmd_AddCommand ("screentell", SV_ConTellScreen_f);
 	Cmd_AddCommand ("dumpuser", SV_DumpUser_f);
-	Cmd_AddCommand ("status", SV_Status_f);
-	Cmd_AddCommand ("addCommand", Cmd_AddTranslatedCommand_f);
-//	Cmd_AddCommand ("UidSvConStatus", Cmd_DisplayUIDSVConStatus_f);
-//	Cmd_AddCommand ("fast_restarttest", (void*)0x816c67e);
 	Cmd_AddCommand ("stringUsage", SV_StringUsage_f);
 	Cmd_AddCommand ("scriptUsage", SV_ScriptUsage_f);
-//	Cmd_AddCommand ("macRegister",Mac_Register_f);
+
+	Cmd_AddCommand ("setadmin", SV_SetAdmin_f);
+	Cmd_AddCommand ("unsetadmin", SV_UnsetAdmin_f);
 
 	Cmd_AddCommand ("stoprecord", SV_StopRecord_f);
 	Cmd_AddCommand ("record", SV_Record_f);
 
-
 	if(Com_IsDeveloper()){
-
+		Cmd_AddCommand ("showconfigstring", SV_ShowConfigstring_f);
 		Cmd_AddCommand ("devmap", SV_Map_f);
 
 	}
 
+}
+
+
+void SV_AddSafeCommands(){
+
+	static qboolean	initialized;
+
+	if ( initialized ) {
+		return;
+	}
+	initialized = qtrue;
+
+	Cmd_AddCommand ("systeminfo", SV_Systeminfo_f);
+	Cmd_AddCommand ("serverinfo", SV_Serverinfo_f);
+	Cmd_AddCommand ("map", SV_Map_f);
+	Cmd_AddCommand ("map_rotate", SV_MapRotate_f);
+	Cmd_AddCommand ("addAdvertMsg", SV_AddAdvert_f);
+	Cmd_AddCommand ("addRuleMsg", SV_AddRule_f);
+	Cmd_AddCommand ("clearAllMsg", SV_ClearAllMessages_f);
+	Cmd_AddCommand ("dumpbanlist", SV_DumpBanlist_f);
+	Cmd_AddCommand ("writenvcfg", NV_WriteConfig);
+	Cmd_AddCommand ("setCmdMinPower", SV_SetPermission_f);
+	Cmd_AddCommand ("adminlist", SV_ListAdmins_f);
+	Cmd_AddCommand ("status", SV_Status_f);
+	Cmd_AddCommand ("addCommand", Cmd_AddTranslatedCommand_f);
+}
+
+
+void SV_Cmd_Init( void ) {
+
+	*(int*)0x8879a40 = -1;
+	*(int*)0x887eb40 = 0;
+	*(int*)0x887eb44 = 0;
+
+}
+
+
+/*
+============
+SV_Cmd_Argc	Returns count of commandline arguments
+============
+*/
+int	SV_Cmd_Argc( void ) {
+
+	int	cmd_argc;
+
+	__asm__ (
+	"mov	0x8879a40,%%eax			\n\t"
+	"mov	0x8879a84(,%%eax,4), %%eax	\n\t"
+	:"=a" (cmd_argc));
+
+	return cmd_argc;
+}
+
+
+/*
+============
+SV_Cmd_Argv	Returns commandline argument by number
+============
+*/
+
+char	*SV_Cmd_Argv( int arg ) {
+
+	char* cmd_argv;
+
+	__asm__ (
+	"mov	0x8879a40,%%eax			\n\t"
+	"mov    $0x822be98,%%edx		\n\t"
+	"cmpl   %%ecx,0x8879a84(,%%eax,4)	\n\t"
+	"jle	1f				\n\t"
+	"mov    0x8879aa4(,%%eax,4),%%eax	\n\t"
+	"lea	(%%eax,%%ecx,4),%%edx		\n\t"
+	"mov    0x4(%%eax),%%edx		\n\t"
+	"lea	(%%eax,%%ecx,4),%%edx		\n\t"
+	"mov	(%%edx),%%edx			\n\t"
+	"1:					\n\t"
+	"					\n\t"
+	:"=d" (cmd_argv)
+	:"c" (arg)
+	:"eax"					);
+	return (cmd_argv);
+}
+
+/*
+============
+SV_Cmd_ArgvBuffer
+
+The interpreted versions use this because
+they can't have pointers returned to them
+============
+*/
+void	SV_Cmd_ArgvBuffer( int arg, char *buffer, int bufferLength ) {
+	Q_strncpyz( buffer, SV_Cmd_Argv(arg), bufferLength );
 }
 

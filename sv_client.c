@@ -333,12 +333,8 @@ A "connect" OOB command has been received
 ==================
 */
 
-#define PB_MESSAGE "PunkBuster Q_strncpyz( userinfo, Cmd_Argv(1), sizeof(userinfo) );Anti-Cheat software must be installed " \
-				"and Enabled in order to join this server. An updated game patch can be downloaded from " \
-				"www.idsoftware.com"
-
 __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
-	char			userinfo[MAX_INFO_STRING];
+	char		userinfo[MAX_INFO_STRING];
 	int			reconnectTime;
 	int			c;
 	int			j;
@@ -353,8 +349,8 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 	int			challenge;
 	char			*password;
 	const char		*denied;
-	const char		*PunkBusterStatus;
 
+	
 	Q_strncpyz( userinfo, SV_Cmd_Argv(1), sizeof(userinfo) );
 	challenge = atoi( Info_ValueForKey( userinfo, "challenge" ) );
 	qport = atoi( Info_ValueForKey( userinfo, "qport" ) );
@@ -372,7 +368,6 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 		NET_OutOfBandPrint( NS_SERVER, from, "error\nNo or bad challenge for address.\n" );
 		return;
 	}
-
 	newcl = NULL;
 
 	// quick reject
@@ -612,6 +607,10 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 		return;
         }
 
+#ifdef PUNKBUSTER
+
+	const char		*PunkBusterStatus;
+
 	if(strstr(Cvar_GetVariantString("noPbGuids"), newcl->originguid) && 32 == strlen(newcl->originguid) && newcl->authentication == 1){
 		newcl->noPb = qtrue;
 	}
@@ -624,7 +623,7 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 		    return;
 		}
 	}
-
+#endif
 	newcl->unknowndirectconnect1 = 0;	//Whatever it is ???
 	newcl->hasVoip = 1;
         newcl->gentity = SV_GentityNum(clientNum);
@@ -640,7 +639,6 @@ __optimize3 __regparm1 void SV_DirectConnect( netadr_t *from ) {
 		Com_Memset( &svse.challenges[c], 0, sizeof( svse.challenges[c] ));
 		return;
 	}
-
 	svse.challenges[c].connected = qtrue;
 
 	Com_Printf( "Going from CS_FREE to CS_CONNECTED for %s num %i guid %s from: %s\n", nick, clientNum, newcl->pbguid, NET_AdrToConnectionString(from));
@@ -768,13 +766,13 @@ void SV_UserinfoChanged( client_t *cl ) {
 	// name for C code
 	Q_strncpyz( cl->name, Info_ValueForKey (cl->userinfo, "name"), sizeof(cl->name) );
 
-	if(!Q_isprintstring(cl->name) || strstr(cl->name,"ID_") || Q_PrintStrlen(cl->name) < 3){
+	if(!Q_isprintstring(cl->name) || strstr(cl->name,"ID_") || strstr(cl->name,"///") || Q_PrintStrlen(cl->name) < 3){
 		if(cl->state == CS_ACTIVE){
 			if(!Q_isprintstring(cl->name)) SV_SendServerCommand(cl, "c \"^5Playernames can not contain advanced ASCII-characters\"");
 			if(strlen(cl->name) < 3) SV_SendServerCommand(cl, "c \"^5Playernames can not be shorter than 3 characters\"");
 		}
 		if(cl->uid <= 0){
-		    Com_sprintf(cl->name, 16, "ID_UNKNOWN_%i", cl - svs.clients);
+		    Com_sprintf(cl->name, 16, "CID_%i", cl - svs.clients);
 		    cl->usernamechanged = UN_NEEDUID;
 		} else {
 		    Com_sprintf(cl->name, 16, "ID_%i:%i", cl->uid / 100000000, cl->uid % 100000000);
@@ -880,7 +878,7 @@ __cdecl void SV_DropClient( client_t *drop, const char *reason ) {
 	int clientnum;
 	char var_01[2];
 	const char *dropreason;
-	char clientName[16];
+	char clientName[64];
 	challenge_t *challenge;
 
 	if ( drop->state <= CS_ZOMBIE ) {
@@ -921,7 +919,7 @@ __cdecl void SV_DropClient( client_t *drop, const char *reason ) {
 	clientnum = drop - svs.clients;
 
 	if(!reason)
-		reason = "";
+		reason = "Unknown reason for dropping";
 
 	if(!Q_stricmp(reason, "silent")){
 		//Just disconnect him and don't tell anyone about it
@@ -934,13 +932,13 @@ __cdecl void SV_DropClient( client_t *drop, const char *reason ) {
 	}
 
 
-	if(SEH_StringEd_GetString( reason )){
+/*	if(SEH_StringEd_GetString( reason )){
 		var_01[0] = 0x14;
 		var_01[1] = 0;
-	}else{
+	}else{*/
 		var_01[0] = 0;
-	}
-
+/*	}
+*/
 	if(!Q_stricmp(reason, "EXE_DISCONNECTED")){
 		dropreason = "EXE_LEFTGAME";
 	} else {

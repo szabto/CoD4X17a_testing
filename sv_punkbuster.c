@@ -32,6 +32,9 @@
 #include <string.h>
 #include <stdlib.h>
 
+#ifdef PUNKBUSTER
+
+
 #ifndef MAX_PACKETLEN
 #define MAX_PACKETLEN 1400
 #endif
@@ -154,8 +157,11 @@ __cdecl char* PbSvGameQuery(int para_01, char* string){
     }
 }
 
-void PbCapatureConsoleOutput_wrapper(const char *msg, int msglen)
+void PbCaptureConsoleOutput_wrapper(const char *msg, int msglen)
 {
-    PbCapatureConsoleOutput(msg, 4096);
+    PbCaptureConsoleOutput(msg, 4096);
 
 }
+
+
+#endif

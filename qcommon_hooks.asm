@@ -19,73 +19,77 @@
 
 
 
+
 SECTION .text
 
 global Com_InitParse
 Com_InitParse:
-    jmp 0x81a7a78
+	jmp dword [oCom_InitParse]
 
 global Com_Restart
 Com_Restart:
-    jmp 0x8123586
+	jmp dword [oCom_Restart]
 
 global Com_InitHunkMemory
 Com_InitHunkMemory:
-    jmp 0x8197174
+	jmp dword [oCom_InitHunkMemory]
 
 global Hunk_InitDebugMemory
 Hunk_InitDebugMemory:
-    jmp 0x819752a
+	jmp dword [oHunk_InitDebugMemory]
 
-global Com_WriteConfig_f
-Com_WriteConfig_f:
-    jmp 0x8122e82
-
-global Com_WriteDefaults_f
-Com_WriteDefaults_f:
-    jmp 0x8123bae
-
-global Com_ErrorCleanup
-Com_ErrorCleanup:
-    jmp 0x8123c86
-
+;global Com_WriteConfig_f
+;Com_WriteConfig_f:
+;    jmp 0x8122e82
+;global Com_WriteDefaults_f
+;Com_WriteDefaults_f:
+;    jmp 0x8123bae
+;global Com_ErrorCleanup
+;Com_ErrorCleanup:
+;    jmp 0x8123c86
 global Hunk_ClearTempMemory
 Hunk_ClearTempMemory:
-    jmp 0x81968a8
+	jmp dword [oHunk_ClearTempMemory]
 
 global Hunk_ClearTempMemoryHigh
 Hunk_ClearTempMemoryHigh:
-    jmp 0x81968b8
+	jmp dword [oHunk_ClearTempMemoryHigh]
 
 global Com_Close
 Com_Close:
-    jmp 0x8121b82
+	jmp dword [oCom_Close]
 
 global Hunk_AllocateTempMemory
 Hunk_AllocateTempMemory:
-    jmp 0x8196fea
+	jmp dword [oHunk_AllocateTempMemory]
 
 global Hunk_FreeTempMemory
 Hunk_FreeTempMemory:
-    jmp 0x81969d4
-
-global Z_Malloc
-Z_Malloc:
-    jmp 0x8196d6e
+	jmp dword [oHunk_FreeTempMemory]
 
 global Mem_BeginAlloc
 Mem_BeginAlloc:
-    jmp 0x81a74d0
+	jmp dword [oMem_BeginAlloc]
 
 global Mem_EndAlloc
 Mem_EndAlloc:
-    jmp 0x81a750a
+	jmp dword [oMem_EndAlloc]
 
 global TempMalloc
 TempMalloc:
-    jmp 0x8151dce
+	jmp dword [oTempMalloc]
 
-global Com_DvarDump
-Com_DvarDump:
-    jmp 0x8126764
-;0x819680e
+SECTION .rodata
+
+oCom_InitParse dd 0x81a7a78
+oCom_Restart dd 0x8123586
+oCom_InitHunkMemory dd 0x8197174
+oHunk_InitDebugMemory dd 0x819752a
+oHunk_ClearTempMemory dd 0x81968a8
+oHunk_ClearTempMemoryHigh dd 0x81968b8
+oCom_Close dd 0x8121b82
+oHunk_AllocateTempMemory dd 0x8196fea
+oHunk_FreeTempMemory dd 0x81969d4
+oMem_BeginAlloc dd 0x81a74d0
+oMem_EndAlloc dd 0x81a750a
+oTempMalloc dd 0x8151dce

@@ -19,32 +19,43 @@
 
 
 
+
 SECTION .text
 
 global G_RunFrame
 G_RunFrame:
-    jmp 0x80b61fc
+	jmp dword [oG_RunFrame]
 
 global G_LocalizedStringIndex
 G_LocalizedStringIndex:
-    jmp 0x80cb218
+	jmp dword [oG_LocalizedStringIndex]
 
 global ClientCommand
 ClientCommand:
-    jmp 0x80b070c
+	jmp dword [oClientCommand]
 
 global ClientConnect
 ClientConnect:
-    jmp 0x80a83d4
+	jmp dword [oClientConnect]
 
 global ClientBegin
 ClientBegin:
-    jmp 0x80a7700
+	jmp dword [oClientBegin]
 
 global StopFollowing
 StopFollowing:
-    jmp 0x80af24c
+	jmp dword [oStopFollowing]
 
 global G_SayTo
 G_SayTo:
-    jmp 0x80ae6f4
+	jmp dword [oG_SayTo]
+
+SECTION .rodata
+
+oG_RunFrame dd 0x80b61fc
+oG_LocalizedStringIndex dd 0x80cb218
+oClientCommand dd 0x80b070c
+oClientConnect dd 0x80a83d4
+oClientBegin dd 0x80a7700
+oStopFollowing dd 0x80af24c
+oG_SayTo dd 0x80ae6f4

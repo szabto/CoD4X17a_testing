@@ -422,23 +422,6 @@ qboolean FS_FCloseFile( fileHandle_t f ) {
 
 
 /*
-==================
-Sys_Mkdir
-==================
-*/
-qboolean Sys_Mkdir( const char *path )
-{
-	int result = mkdir( path, 0750 );
-
-	if( result != 0 )
-		return errno == EEXIST;
-
-	return qtrue;
-}
-
-
-
-/*
 ================
 FS_filelength
 
@@ -477,6 +460,25 @@ static void FS_ReplaceSeparators( char *path ) {
 		}
 	}
 }
+
+
+/*
+====================
+FS_StripTrailingSeperator
+
+Fix things up differently for win/unix/mac
+====================
+*/
+static void FS_StripTrailingSeperator( char *path ) {
+
+	int len = strlen(path);
+
+	if(path[len -1] == PATH_SEP)
+	{
+		path[len -1] = '\0';
+	}
+}
+
 
 
 void FS_BuildOSPathForThread(const char *base, const char *game, const char *qpath, char *fs_path, int fs_thread)
@@ -586,18 +588,43 @@ FS_SV_HomeRemove
 qboolean FS_SV_HomeRemove( const char *path ) {
 	char osPath[MAX_OSPATH];
 	FS_BuildOSPathForThread( fs_homepath->string, path, "", osPath, 0 );
-	osPath[strlen(osPath)-1] = '\0';
+	FS_StripTrailingSeperator( osPath );
+	return remove( osPath ) == 0;
+}
+
+/*
+===========
+FS_BaseRemove
+
+===========
+*/
+qboolean FS_BaseRemove( const char *path ) {
+	char osPath[MAX_OSPATH];
+	FS_BuildOSPathForThread( fs_basepath->string, "", path, osPath, 0);
+	return remove( osPath ) == 0;
+}
+
+/*
+===========
+FS_SV_BaseRemove
+
+===========
+*/
+qboolean FS_SV_BaseRemove( const char *path ) {
+	char osPath[MAX_OSPATH];
+	FS_BuildOSPathForThread( fs_basepath->string, path, "", osPath, 0 );
+	FS_StripTrailingSeperator( osPath );
 	return remove( osPath ) == 0;
 }
 
 
 /*
 ===========
-FS_Remove
+FS_RemoveOSPath
 
 ===========
 */
-static void FS_Remove( const char *osPath ) {
+void FS_RemoveOSPath( const char *osPath ) {
 	remove( osPath );
 }
 
@@ -626,10 +653,9 @@ qboolean FS_FileExists( const char *file )
 	return qfalse;
 }
 
-
 /*
 ================
-FS_FileExists
+FS_SV_FileExists
 
 Tests if the file exists in the current gamedir, this DOES NOT
 search the paths.  This is to determine if opening a file to write
@@ -637,13 +663,30 @@ search the paths.  This is to determine if opening a file to write
 NOTE TTimo: this goes with FS_FOpenFileWrite for opening the file afterwards
 ================
 */
+qboolean FS_SV_HomeFileExists( const char *file )
+{
+	FILE *f;
+	char testpath[MAX_OSPATH];
+
+	FS_BuildOSPathForThread( fs_homepath->string, file, "", testpath, 0);
+
+	f = fopen( testpath, "rb" );
+	if (f) {
+		fclose( f );
+		return qtrue;
+	}
+	return qfalse;
+}
+
+
+
 char* FS_SV_GetFilepath( const char *file )
 {
 	FILE *f;
 	char *testpath;
 
 	testpath = FS_BuildOSPath( fs_homepath->string, file, "" );
-        testpath[strlen(testpath)-1] = '\0';
+	FS_StripTrailingSeperator( testpath );
 
 	f = fopen( testpath, "rb" );
 	if (f) {
@@ -652,7 +695,7 @@ char* FS_SV_GetFilepath( const char *file )
 	}
 
         testpath = FS_BuildOSPath( fs_basepath->string, file, "");
-        testpath[strlen(testpath)-1] = '\0';
+	FS_StripTrailingSeperator( testpath );
 
 	f = fopen( testpath, "rb" );
 	if (f) {
@@ -676,6 +719,8 @@ void FS_Rename( const char *from, const char *to ) {
 
 	FS_BuildOSPathForThread( fs_homepath->string, "", from, from_ospath, 0);
 	FS_BuildOSPathForThread( fs_homepath->string, "", to, to_ospath, 0);
+	FS_StripTrailingSeperator( to_ospath );
+	FS_StripTrailingSeperator( from_ospath );
 
 	if ( fs_debug->integer ) {
 		Sys_Print(va("^4FS_Rename: %s --> %s\n", from_ospath, to_ospath ));
@@ -684,27 +729,114 @@ void FS_Rename( const char *from, const char *to ) {
 	if (rename( from_ospath, to_ospath )) {
 		// Failed, try copying it and deleting the original
 		FS_CopyFile ( from_ospath, to_ospath );
-		FS_Remove ( from_ospath );
+		FS_RemoveOSPath ( from_ospath );
 	}
 }
+
+/*
+===========
+FS_RenameOSPath
+
+===========
+*/
+void FS_RenameOSPath( const char *from_ospath, const char *to_ospath ) {
+
+	if ( fs_debug->integer ) {
+		Sys_Print(va("^4FS_RenameOSPath: %s --> %s\n", from_ospath, to_ospath ));
+	}
+
+	if (rename( from_ospath, to_ospath )) {
+		// Failed, try copying it and deleting the original
+		FS_CopyFile ( (char*)from_ospath, (char*)to_ospath );
+		FS_RemoveOSPath ( from_ospath );
+	}
+}
+
+/*
+===========
+FS_FileExistsOSPath
+
+===========
+*/
+qboolean FS_FileExistsOSPath( const char *ospath ) {
+
+	FILE* f;
+
+	f = fopen( ospath, "rb" );
+	if (f) {
+		fclose( f );
+		return qtrue;
+	}
+	return qfalse;
+}
+
 
 
 /*
 ===========
 FS_SV_Rename
-
+Will rename files inside fs_homepath and fs_basepath
+ignores zip-files
 ===========
 */
 void FS_SV_Rename( const char *from, const char *to ) {
+	char	from_ospath[MAX_OSPATH];
+	char	to_ospath[MAX_OSPATH];
+	FILE *f;
+
+	FS_BuildOSPathForThread( fs_homepath->string, from, "", from_ospath, 0);
+	FS_BuildOSPathForThread( fs_homepath->string, to, "", to_ospath, 0);
+	FS_StripTrailingSeperator( to_ospath );
+	FS_StripTrailingSeperator( from_ospath );
+
+	f = fopen( from_ospath, "rb" );
+	if (f) {
+		fclose( f );
+		if ( fs_debug->integer ) {
+			Sys_Print(va("^4FS_Rename: %s --> %s\n", from_ospath, to_ospath ));
+		}
+		if (rename( from_ospath, to_ospath )) {
+			// Failed, try copying it and deleting the original
+			FS_CopyFile ( from_ospath, to_ospath );
+			FS_RemoveOSPath ( from_ospath );
+		}
+	}
+
+	FS_BuildOSPathForThread( fs_basepath->string, from, "", from_ospath, 0);
+	FS_BuildOSPathForThread( fs_basepath->string, to, "", to_ospath, 0);
+	FS_StripTrailingSeperator( to_ospath );
+	FS_StripTrailingSeperator( from_ospath );
+
+	f = fopen( from_ospath, "rb" );
+	if (f) {
+		fclose( f );
+		if ( fs_debug->integer ) {
+			Sys_Print(va("^4FS_Rename: %s --> %s\n", from_ospath, to_ospath ));
+		}
+		if (rename( from_ospath, to_ospath )) {
+			// Failed, try copying it and deleting the original
+			FS_CopyFile ( from_ospath, to_ospath );
+			FS_RemoveOSPath ( from_ospath );
+		}
+	}
+}
+
+/*
+===========
+FS_SV_HomeRename
+Will rename files inside fs_homepath
+ignores zip-files
+===========
+*/
+void FS_SV_HomeRename( const char *from, const char *to ) {
 	char	from_ospath[MAX_OSPATH];
 	char	to_ospath[MAX_OSPATH];
 
 	FS_BuildOSPathForThread( fs_homepath->string, from, "", from_ospath, 0);
 	FS_BuildOSPathForThread( fs_homepath->string, to, "", to_ospath, 0);
 
-
-	from_ospath[strlen(from_ospath)-1] = '\0';
-	to_ospath[strlen(to_ospath)-1] = '\0';
+	FS_StripTrailingSeperator( to_ospath );
+	FS_StripTrailingSeperator( from_ospath );
 
 	if ( fs_debug->integer ) {
 		Sys_Print(va("^4FS_Rename: %s --> %s\n", from_ospath, to_ospath ));
@@ -713,9 +845,12 @@ void FS_SV_Rename( const char *from, const char *to ) {
 	if (rename( from_ospath, to_ospath )) {
 		// Failed, try copying it and deleting the original
 		FS_CopyFile ( from_ospath, to_ospath );
-		FS_Remove ( from_ospath );
+		FS_RemoveOSPath ( from_ospath );
 	}
 }
+
+
+
 
 
 
@@ -1456,9 +1591,13 @@ int FS_ReadLine( void *buffer, int len, fileHandle_t f ) {
 	if ( !fs_searchpaths ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization\n" );
 	}
-
 	if ( !f ) {
 		return 0;
+	}
+
+	if(fsh[f].zipFile == qtrue)
+	{
+		Com_Error( ERR_FATAL, "FS_ReadLine: Can not read ZIP-Files\n" );
 	}
 
 	buf = buffer;
@@ -1467,56 +1606,12 @@ int FS_ReadLine( void *buffer, int len, fileHandle_t f ) {
 	if (read == NULL) {	//Error
 
 		if(feof(fsh[f].handleFiles.file.o)) return 0;
-		Com_Error (ERR_FATAL, "FS_ReadLine: couldn't read");
+		Com_PrintError("FS_ReadLine: couldn't read");
 		return -1;
 	}
 	return 1;
 }
 
-
-
-/*
-===========
-FS_SV_FOpenFileWrite
-
-===========
-*/
-fileHandle_t FS_SV_FOpenFileWrite( const char *filename ) {
-	char ospath[MAX_OSPATH];
-	fileHandle_t	f;
-
-	if ( !fs_searchpaths ) {
-		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
-	}
-
-	FS_BuildOSPathForThread( fs_homepath->string, filename, "", ospath, 0 );
-	ospath[strlen(ospath)-1] = '\0';
-
-	f = FS_HandleForFile();
-	if(f == 0){
-		return 0;
-	}
-	FS_SetFilenameForHandle(f, filename);
-	fsh[f].zipFile = qfalse;
-
-	if ( fs_debug->integer ) {
-		Sys_Print(va("^4FS_SV_FOpenFileWrite: %s\n", ospath ));
-	}
-
-	if( FS_CreatePath( ospath ) ) {
-		return 0;
-	}
-
-	fsh[f].handleFiles.file.o = fopen( ospath, "wb" );
-
-	Q_strncpyz( fsh[f].name, filename, sizeof( fsh[f].name ) );
-
-	fsh[f].handleSync = qfalse;
-	if (!fsh[f].handleFiles.file.o) {
-		f = 0;
-	}
-	return f;
-}
 
 /*
 ===========
@@ -1810,13 +1905,62 @@ int FS_ReadFile( const char *qpath, void **buffer ) {
 
 /*
 ============
+FS_SV_ReadFile
+
+Filename are relative to the quake search path
+a null buffer will just return the file length without loading
+============
+*/
+int FS_SV_ReadFile( const char *qpath, void **buffer ) {
+	fileHandle_t	h;
+	byte*			buf;
+	int			len;
+
+	if ( !qpath || !qpath[0] ) {
+		Com_Error( ERR_FATAL, "FS_ReadFile with empty name\n" );
+	}
+
+	buf = NULL;	// quiet compiler warning
+
+	// look for it in the filesystem or pack files
+	len = FS_SV_FOpenFileRead( qpath, &h );
+	if ( h == 0 ) {
+		if ( buffer ) {
+			*buffer = NULL;
+		}
+		return -1;
+	}
+	
+	if ( !buffer ) {
+		FS_FCloseFile( h);
+		return len;
+	}
+
+	fs_loadStack ++;
+
+	buf = malloc(len+1);
+	*buffer = buf;
+
+	FS_Read (buf, len, h);
+
+	// guarantee that it will have a trailing 0 for string operations
+	buf[len] = 0;
+	FS_FCloseFile( h );
+	return len;
+}
+
+
+
+/*
+============
 FS_WriteFile
 
 Filename are reletive to the quake search path
 ============
 */
-void FS_WriteFile( const char *qpath, const void *buffer, int size ) {
+int FS_WriteFile( const char *qpath, const void *buffer, int size ) {
 	fileHandle_t f;
+	int len;
 
 	if ( !fs_searchpaths ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
@@ -1824,18 +1968,72 @@ void FS_WriteFile( const char *qpath, const void *buffer, int size ) {
 
 	if ( !qpath || !buffer ) {
 		Com_Error( ERR_FATAL, "FS_WriteFile: NULL parameter" );
+		return -1;
 	}
 
 	f = FS_FOpenFileWrite( qpath );
 	if ( !f ) {
 		Com_Printf( "Failed to open %s\n", qpath );
-		return;
+		return -1;
 	}
 
-	FS_Write( buffer, size, f );
+	len = FS_Write( buffer, size, f );
 
 	FS_FCloseFile( f );
+
+	return len;
+
 }
+
+
+
+
+/*
+===========
+FS_SV_FOpenFileWrite
+
+===========
+*/
+
+static fileHandle_t FS_SV_FOpenFileWriteGeneric( const char *filename, const char* basepath ) {
+	char ospath[MAX_OSPATH];
+	fileHandle_t	f;
+
+	if ( !fs_searchpaths ) {
+		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
+	}
+
+	FS_BuildOSPathForThread( basepath, filename, "", ospath, 0 );
+	FS_StripTrailingSeperator( ospath );
+
+	f = FS_HandleForFile();
+	if(f == 0){
+		return 0;
+	}
+	FS_SetFilenameForHandle(f, filename);
+	fsh[f].zipFile = qfalse;
+
+	if ( fs_debug->integer ) {
+		Sys_Print(va("^4FS_SV_FOpenFileWrite: %s\n", ospath ));
+	}
+
+	if( FS_CreatePath( ospath ) ) {
+		return 0;
+	}
+
+	fsh[f].handleFiles.file.o = fopen( ospath, "wb" );
+	fsh[f].handleSync = qfalse;
+	if (!fsh[f].handleFiles.file.o) {
+		f = 0;
+	}
+	return f;
+}
+
+fileHandle_t FS_SV_FOpenFileWrite( const char *filename )
+{
+    return FS_SV_FOpenFileWriteGeneric( filename, fs_homepath->string );
+}
+
 
 /*
 ============
@@ -1844,26 +2042,45 @@ FS_SV_WriteFile
 Filename are reletive to the quake search path
 ============
 */
-void FS_SV_WriteFile( const char *qpath, const void *buffer, int size ) {
+
+static int FS_SV_WriteFileGeneric( const char *qpath, const void *buffer, int size, const char* basepath) {
 	fileHandle_t f;
+	int len;
 
 	if ( !fs_searchpaths ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
+		return -1;
 	}
 
 	if ( !qpath || !buffer ) {
 		Com_Error( ERR_FATAL, "FS_WriteFile: NULL parameter" );
+		return -1;
 	}
 
-	f = FS_SV_FOpenFileWrite( qpath );
+	f = FS_SV_FOpenFileWriteGeneric( qpath, basepath );
 	if ( !f ) {
 		Com_Printf( "Failed to open %s\n", qpath );
-		return;
+		return -1;
 	}
 
-	FS_Write( buffer, size, f );
+	len = FS_Write( buffer, size, f );
 
 	FS_FCloseFile( f );
+
+	return len;
+}
+
+int FS_SV_BaseWriteFile( const char *qpath, const void *buffer, int size)
+{
+    return FS_SV_WriteFileGeneric( qpath, buffer, size, fs_basepath->string);
+
+}
+
+
+int FS_SV_HomeWriteFile( const char *qpath, const void *buffer, int size)
+{
+    return FS_SV_WriteFileGeneric( qpath, buffer, size, fs_homepath->string);
+
 }
 
 
@@ -2195,7 +2412,7 @@ static pack_t *FS_LoadZipFile( char *zipfile, const char *basename ) {
 
 
 
-void FS_CopyVars()
+void FS_CopyCvars()
 {
     //SEH
     *(cvar_t**)0x13f9a1e0 = loc_language;
@@ -2248,7 +2465,6 @@ void FS_InitFilesystem()
   Q_strncpyz(lastValidBase, fs_basepath->string, sizeof(lastValidBase));
   Q_strncpyz(lastValidGame, fs_gameDirVar->string, sizeof(lastValidGame));
 
-  FS_CopyVars();
 }
 
 
@@ -2293,7 +2509,7 @@ void FS_GameSetDirSep()
 
   flag = qfalse;
   Q_strncpyz(buf, fs_gameDirVar->string, sizeof(buf));
-  length = strlen(fs_gameDirVar->string);
+  length = strlen(buf);
 
   for (i = 0; length >= i; i++)
   {
@@ -2592,7 +2808,7 @@ static const char* sub_55D700(const char *instr)
   flip ^= 1u;
   if ( strlen(instr) >= 10 )
   {
-    memset(&Array64[64 * flip], 0, 64);
+    Com_Memset(&Array64[64 * flip], 0, 64);
 	for(i = 10; i < 64 && instr[i] != '\0' && isalpha(instr[i]) != '\0'; i++)
 	{
 		Array64[(64 * flip) + i - 10] = instr[i];
@@ -2682,7 +2898,7 @@ void FS_AddIwdFilesForGameDirectory(const char *path, const char *dir)
 		{
 			Com_Memcpy(sorted[i],  "localized_", 10);
 			language = sub_55D700(sorted[i]);
-	        if ( !language[0] )
+			if ( !language[0] )
 			{
 				Com_PrintWarning("WARNING: Localized assets iwd file %s/%s/%s has invalid name (no language specified). Proper naming convention is: localized_[language]_iwd#.iwd\n", path, dir, sorted[i]);
 				continue;
@@ -2703,7 +2919,7 @@ void FS_AddIwdFilesForGameDirectory(const char *path, const char *dir)
 			}
 			islocalized = qtrue;
 		}else{
-		    if ( !Q_stricmp(dir, BASEGAME) && !Q_stricmp(path, fs_basepath->string) && Q_stricmpn(sorted[i], "iw_", 3) )
+		    if ( !Q_stricmp(dir, BASEGAME) && !Q_stricmp(path, fs_basepath->string) && Q_stricmpn(sorted[i], "iw_", 3) && Q_stricmpn(sorted[i], "xiceops_", 7))
 			{
 				Com_PrintWarning("WARNING: Invalid IWD %s in \\main.\n", sorted[i]);
 				continue;
@@ -2734,6 +2950,7 @@ void FS_AddIwdFilesForGameDirectory(const char *path, const char *dir)
 			{
 				prev = sp;
 			}
+			Cvar_SetInt(loc_language, search->langIndex);
 		}
 		search->next = sp;
 		prev->next = search;
@@ -3105,7 +3322,7 @@ void FS_Restart( int checksumFeed ) {
 	if ( Q_stricmp( fs_gamedirvar->string, lastValidGame ) ) {
 		// skip the wolfconfig.cfg if "safe" is on the command line
 		if ( !Com_SafeMode() ) {
-			Cbuf_AddText(0, "exec config_mp.cfg\n" );
+			Cbuf_AddText( "exec config_mp.cfg\n" );
 		}
 	}
 
@@ -3314,3 +3531,8 @@ void FS_PureServerSetLoadedPaks( const char *pakSums, const char *pakNames ) {
 }
 
 */
+
+qboolean FS_SetPermissionsExec(const char* ospath)
+{
+	return Sys_SetPermissionsExec( ospath );
+}

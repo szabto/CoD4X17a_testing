@@ -99,7 +99,8 @@ qboolean Com_AddStartupCommands( void ) {
 
 		added = qtrue;
 		Com_sprintf(buf,sizeof(buf),"%s\n",com_consoleLines[i]);
-		Cbuf_ExecuteBuffer( 0,0, buf);
+		Cbuf_ExecuteText( EXEC_NOW, buf);
+		Cbuf_Execute();
 	}
 
 	return added;
@@ -149,12 +150,13 @@ qboolean Com_SafeMode( void ) {
 
 	for ( i = 0 ; i < com_numConsoleLines ; i++ ) {
 		Cmd_TokenizeString( com_consoleLines[i] );
-		if ( !Q_stricmp( Cmd_Argv( 0 ), "safe" )
-			 || !Q_stricmp( Cmd_Argv( 0 ), "cvar_restart" ) ) {
+		if ( !Q_stricmp( Cmd_Argv( 0 ), "safe" ) || !Q_stricmp( Cmd_Argv( 0 ), "cvar_restart" ) ) {
 			com_consoleLines[i][0] = 0;
+			Cmd_EndTokenizedString( );
 			return qtrue;
 		}
 	}
+	Cmd_EndTokenizedString( );
 	return qfalse;
 }
 

@@ -32,6 +32,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #ifdef _WIN32
 #	include <winsock2.h>
@@ -56,12 +57,15 @@ typedef int socklen_t;
 typedef unsigned short sa_family_t;
 #	endif
 
-#	define EAGAIN					WSAEWOULDBLOCK
-#	define EADDRNOTAVAIL	WSAEADDRNOTAVAIL
+#	define EAGAIN			WSAEWOULDBLOCK
+#	define EADDRNOTAVAIL		WSAEADDRNOTAVAIL
 #	define EAFNOSUPPORT		WSAEAFNOSUPPORT
-#	define ECONNRESET			WSAECONNRESET
+#	define ECONNRESET		WSAECONNRESET
+#	define EINPROGRESS		WSAEINPROGRESS
 typedef u_long	ioctlarg_t;
 #	define socketError		WSAGetLastError( )
+
+#define NET_NOSIGNAL 0x0
 
 static WSADATA	winsockdata;
 static qboolean	winsockInitialized = qfalse;
@@ -72,6 +76,12 @@ static qboolean	winsockInitialized = qfalse;
 		// needed for socklen_t on OSX 10.2
 #		define _BSD_SOCKLEN_T_
 #	endif
+
+#ifdef MACOS_X
+    #define NET_NOSIGNAL SO_NOSIGPIPE
+#else
+    #define NET_NOSIGNAL MSG_NOSIGNAL
+#endif
 
 #	include <sys/socket.h>
 #	include <errno.h>
@@ -100,6 +110,10 @@ typedef int	ioctlarg_t;
 #	define socketError		errno
 typedef int SOCKET;
 #endif
+
+
+#define IPEFF_EF 0xB8
+
 
 #define	MAX_IPS		32
 
@@ -186,8 +200,6 @@ static SOCKET	tcp6_socket = INVALID_SOCKET;
 static SOCKET	socks_socket = INVALID_SOCKET;
 //static SOCKET	multicast6_socket = INVALID_SOCKET;
 
-pthread_t net_thread;
-
 // Keep track of currently joined multicast group.
 static struct ipv6_mreq curgroup;
 // And the currently bound address.
@@ -226,7 +238,7 @@ static int numIP;
 
 typedef struct{
 	netadr_t		remote;
-	unsigned int		lastMsgTime;
+	unsigned int	lastMsgTime;
 	int			connectionId;
 	int			serviceId;
 	tcpclientstate_t	state;
@@ -235,7 +247,7 @@ typedef struct{
 
 
 typedef struct{
-	fd_set			fdr;
+	fd_set		fdr;
 	int			highestfd;
 	int			activeConnectionCount; //Connections that have been successfully authentificated
 	unsigned long long	lastAttackWarnTime;
@@ -1030,6 +1042,7 @@ int NET_IPSocket( char *net_interface, int port, int *err, qboolean tcp) {
 	struct sockaddr_in		address;
 	ioctlarg_t			_true = 1;
 	int				i = 1;
+	int				tos = IPEFF_EF;
 
 	*err = 0;
 
@@ -1067,6 +1080,9 @@ int NET_IPSocket( char *net_interface, int port, int *err, qboolean tcp) {
 	// make it broadcast capable
 		if( setsockopt( newsocket, SOL_SOCKET, SO_BROADCAST, (char *) &i, sizeof(i) ) == SOCKET_ERROR ) {
 			Com_PrintWarning( "NET_IPSocket: setsockopt SO_BROADCAST: %s\n", NET_ErrorString() );
+		}
+		if( setsockopt( newsocket, IPPROTO_IP, IP_TOS, (char *) &tos, sizeof(tos) ) == SOCKET_ERROR ) {
+			Com_PrintWarning( "NET_IPSocket: setsockopt IP_TOS: %s\n", NET_ErrorString() );
 		}
 	}
 
@@ -1567,7 +1583,11 @@ static void NET_GetLocalAddress(void)
 static void NET_GetLocalAddress( void ) {
 	char				hostname[256];
 	struct addrinfo	hint;
+	struct sockaddr_storage localhostadr;
 	struct addrinfo	*res = NULL;
+
+	qboolean has_ip4 = qfalse;
+	qboolean has_ip6 = qfalse;
 
 	numIP = 0;
 
@@ -1601,11 +1621,26 @@ static void NET_GetLocalAddress( void ) {
 		for(search = res; search; search = search->ai_next)
 		{
 			if(search->ai_family == AF_INET)
+			{
 				NET_AddLocalAddress("", search->ai_addr, (struct sockaddr *) &mask4);
-			else if(search->ai_family == AF_INET6)
+				has_ip4 = qtrue;
+				
+			}else if(search->ai_family == AF_INET6){
 				NET_AddLocalAddress("", search->ai_addr, (struct sockaddr *) &mask6);
+				has_ip6 = qtrue;
+				
+			}
 		}
-	
+		/* Windows doesn't seem to add the loopback interface to its list of available interfaces. We have to assume they are there. */
+		if( has_ip4 && Sys_StringToSockaddr("localhost", (struct sockaddr *) &localhostadr, sizeof(localhostadr), AF_INET ))
+		{
+			NET_AddLocalAddress("localhost", (struct sockaddr *) &localhostadr, (struct sockaddr *) &mask4);
+		}
+		
+		if( has_ip6 && Sys_StringToSockaddr("localhost", (struct sockaddr *) &localhostadr, sizeof(localhostadr), AF_INET6 ))
+		{
+			NET_AddLocalAddress("localhost", (struct sockaddr *) &localhostadr, (struct sockaddr *) &mask6);
+		}
 		Sys_ShowIP();
 	}
 	
@@ -1865,6 +1900,11 @@ void NET_OpenIP( void ) {
 
 	if(!validsock && !validsock6)
 		Com_Error(ERR_FATAL,"Could not bind to a IPv4 or IPv6 network socket");
+		
+	if(tcp_socket != INVALID_SOCKET || tcp6_socket != INVALID_SOCKET)
+	{
+		NET_TcpServerInit();
+	}
 }
 
 
@@ -1879,14 +1919,8 @@ NET_GetCvars
 static qboolean NET_GetCvars( void ) {
 	int modified;
 
-#ifdef DEDICATED
-	// I want server owners to explicitly turn on ipv6 support.
 	net_enabled = Cvar_RegisterInt( "net_enabled", 3, 0, 8, CVAR_LATCH | CVAR_ARCHIVE, "Enables / Disables Network" );
-#else
-	/* End users have it enabled so they can connect to ipv6-only hosts, but ipv4 will be
-	 * used if available due to ping */
-	net_enabled = Cvar_RegisterInt( "net_enabled", 1, 0, 8, CVAR_LATCH | CVAR_ARCHIVE, "Enables / Disables Network");
-#endif
+
 	modified = net_enabled->modified;
 	net_enabled->modified = qfalse;
 
@@ -1997,20 +2031,24 @@ void NET_Config( qboolean enableNetworking ) {
 		for(i = 0, con = tcpServer.connections; i < MAX_TCPCONNECTIONS; i++, con++){
 
 			if(con->lastMsgTime > 0 && con->sock != INVALID_SOCKET)
+			{
+				Com_Printf("Close TCP serversocket: %d\n", con->sock);
 				NET_TcpCloseSocket(con->sock);
+			}
 		}
 
 		for(i = 0; i < numIP; i++){
 
 			if(ip_socket[i].sock != INVALID_SOCKET){
+				Com_Printf("Close UDP socket: %d\n", ip_socket[i].sock);
 				closesocket( ip_socket[i].sock );
 				ip_socket[i].sock = INVALID_SOCKET;
 			}
 		}
 
 		if ( tcp_socket != INVALID_SOCKET ) {
-			//closesocket( tcp_socket );
-			shutdown(con->sock, 2);
+			Com_Printf("Close TCPv4 socket: %d\n", tcp_socket);
+			closesocket( tcp_socket );
 			tcp_socket = INVALID_SOCKET;
 		}
 
@@ -2024,11 +2062,13 @@ void NET_Config( qboolean enableNetworking ) {
 		}
 */
 		if ( tcp6_socket != INVALID_SOCKET ) {
+			Com_Printf("Close TCPv6 socket: %d\n", tcp6_socket);
 			closesocket( tcp6_socket );
 			tcp6_socket = INVALID_SOCKET;
 		}
 
 		if ( socks_socket != INVALID_SOCKET ) {
+			Com_Printf("Close Socks socket: %d\n", socks_socket);
 			closesocket( socks_socket );
 			socks_socket = INVALID_SOCKET;
 		}
@@ -2082,6 +2122,8 @@ netadr_t* NET_GetDefaultCommunicationSocket(){
 Functions for TCP networking which can be used by client and server
 */
 
+
+
 /*
 ===============
 NET_TcpCloseSocket
@@ -2115,8 +2157,8 @@ void NET_TcpCloseSocket(int socket)
 				tcpServer.activeConnectionCount--;
 				NET_TCPConnectionClosed(&conn->remote, conn->sock, conn->connectionId, conn->serviceId);
 			}
-
 			conn->sock = INVALID_SOCKET;
+			NET_TcpServerRebuildFDList();
 			return;
 		}
 	}
@@ -2139,7 +2181,7 @@ int NET_TcpSendData( int sock, const void *data, int length ) {
 
 	do
 	{
-		state = send( sock, data, length, MSG_NOSIGNAL | MSG_MORE); // FIX: flag NOSIGNAL prevents SIGPIPE in case of connection problems
+		state = send( sock, data, length, NET_NOSIGNAL); // FIX: flag NOSIGNAL prevents SIGPIPE in case of connection problems
 
 		if(state == SOCKET_ERROR)
 		{
@@ -2185,7 +2227,7 @@ int NET_TcpServerGetPacket(tcpConnections_t *conn, void *netmsg, int maxsize, qb
 	int ret;
 
 
-	ret = recv(conn->sock, netmsg, maxsize , MSG_DONTWAIT);
+	ret = recv(conn->sock, netmsg, maxsize , 0);
 
 	if(ret == SOCKET_ERROR){
 
@@ -2226,6 +2268,42 @@ int NET_TcpServerGetPacket(tcpConnections_t *conn, void *netmsg, int maxsize, qb
 }
 
 
+void NET_TcpServerRebuildFDList()
+{
+	int 				i;
+	tcpConnections_t	*conn;
+
+	FD_ZERO(&tcpServer.fdr);
+	tcpServer.highestfd = -1;
+	
+	for(i = 0, conn = tcpServer.connections; i < MAX_TCPCONNECTIONS; i++, conn++)
+	{
+		if(conn->sock != INVALID_SOCKET)
+		{
+			FD_SET(conn->sock, &tcpServer.fdr);
+			if(conn->sock > tcpServer.highestfd)
+			{
+				tcpServer.highestfd = conn->sock;
+			}
+		}
+	}
+}
+
+void NET_TcpServerInit()
+{
+	int 				i;
+	tcpConnections_t	*conn;
+
+	Com_Memset(&tcpServer, 0, sizeof(tcpServer));
+	FD_ZERO(&tcpServer.fdr);
+	tcpServer.highestfd = -1;
+		
+	for(i = 0, conn = tcpServer.connections; i < MAX_TCPCONNECTIONS; i++, conn++)
+	{
+		conn->sock = INVALID_SOCKET;
+	}
+}
+
 /*
 ==================
 NET_TcpServerPacketEventLoop
@@ -2246,6 +2324,12 @@ void NET_TcpServerPacketEventLoop(){
 	tcpConnections_t	*conn;
 
 	byte bufData[MAX_MSGLEN];
+
+	if(tcpServer.highestfd < 0)
+	{
+		// windows ain't happy when select is called without valid FDs
+		return;
+	}
 
 	while(qtrue){
 
@@ -2331,6 +2415,7 @@ void NET_TcpServerPacketEventLoop(){
 	}
 }
 
+
 /*
 ==================
 NET_TcpServerOpenConnection
@@ -2340,12 +2425,11 @@ Find a new slot in the client array for state handling
 ==================
 */
 
-
 void NET_TcpServerOpenConnection(netadr_t *from, int newfd){
 
 	tcpConnections_t	*conn;
-	unsigned long long	oldestTimeAccepted = 0xFFFFFFFFFFFFFFFF;
-	unsigned long long	oldestTime = 0xFFFFFFFFFFFFFFFF;
+	uint32_t			oldestTimeAccepted = 0xFFFFFFFF;
+	uint32_t			oldestTime = 0xFFFFFFFF;
 	int			oldestAccepted = 0;
 	int			oldest = 0;
 	int			i;
@@ -2507,7 +2591,7 @@ returns -1 if connection got closed
 ====================
 */
 
-int NET_TcpClientGetData(int sock, void* buf, const int buflen){
+int NET_TcpClientGetData(int sock, void* buf, int* buflen){
 
 	int err;
 	int ret;
@@ -2516,9 +2600,9 @@ int NET_TcpClientGetData(int sock, void* buf, const int buflen){
 	if(sock < 1)
 		return -1;
 
-	while(true){
+	while(qtrue){
 
-		ret = recv(sock, buf + readcount, buflen - readcount, MSG_DONTWAIT);
+		ret = recv(sock, buf + readcount, *buflen - readcount, 0);
 
 		if(ret == SOCKET_ERROR){
 
@@ -2534,27 +2618,32 @@ int NET_TcpClientGetData(int sock, void* buf, const int buflen){
 			else
 				Com_PrintWarningNoRedirect("NET_TcpGetData recv() syscall failed: %s\n", NET_ErrorString());
 
+			*buflen = readcount;
 			NET_TcpCloseSocket(sock);
 			return -1;
 
 		}else if(ret == 0){
-
+			if(*buflen == readcount)
+			{
+				return 0;
+			}
+			*buflen = readcount;
 			NET_TcpCloseSocket(sock);
 			Com_Printf("Connection closed by remote host\n");
 			return -1;
 
 		}else{
 
-			if( ret >= buflen - readcount) {
+			if( ret > *buflen - readcount) {
 
-				Com_PrintWarning( "Oversize packet on socket %d\n", sock);
-
-				readcount = buflen -1;
+				Com_PrintWarning( "Oversize packet on socket %d Remaining bytes are: %d, received bytes are %d\n", sock, *buflen - readcount, ret);
+				readcount = *buflen -1;
 				break;
 			}
 			readcount = readcount + ret;
 		}
 	}
+	*buflen = readcount;
 	return readcount;
 }
 
@@ -2600,7 +2689,11 @@ int NET_TcpClientConnect( const char *remoteAdr ) {
 	if( connect( newsocket, (void *)&address, sizeof(address) ) == SOCKET_ERROR ) {
 
 		err = socketError;
-		if(err == EINPROGRESS){
+		if(err == EINPROGRESS
+#ifdef _WIN32
+			|| err == WSAEWOULDBLOCK
+#endif		
+		){
 
 			FD_ZERO(&fdr);
 			FD_SET(newsocket, &fdr);
@@ -2617,7 +2710,7 @@ int NET_TcpClientConnect( const char *remoteAdr ) {
 
 				socklen_t so_len = sizeof(err);
 
-				if(getsockopt(newsocket, SOL_SOCKET, SO_ERROR, &err, &so_len) == 0);
+				if(getsockopt(newsocket, SOL_SOCKET, SO_ERROR, (char*) &err, &so_len) == 0);
 				{
 					return newsocket;
 				}
@@ -2701,8 +2794,6 @@ void NET_Init( void ) {
 	NET_Config( qtrue );
 	
 	Cmd_AddCommand ("net_restart", NET_Restart_f);
-
-//	pthread_create( &net_thread, NULL, &NET_Frame, NULL );
 
 }
 
@@ -2809,7 +2900,7 @@ __optimize3 __regparm1 qboolean NET_Sleep(unsigned int usec)
 
 		}
 
-		if(FD_ISSET(tcp_socket, &fdr) || FD_ISSET(tcp6_socket, &fdr))
+		if((tcp_socket != INVALID_SOCKET && FD_ISSET(tcp_socket, &fdr)) || (tcp6_socket != INVALID_SOCKET && FD_ISSET(tcp6_socket, &fdr)))
 		{
 			if(NET_TcpServerConnectEvent(&fdr))
 				netabort = qtrue;

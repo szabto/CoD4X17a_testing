@@ -89,13 +89,6 @@ void Netchan_Init( int port ) {
 	showpackets = Cvar_RegisterBool( "showpackets", qfalse, CVAR_TEMP, "Show all sent and received packets");
 	showdrop = Cvar_RegisterBool( "showdrop", qfalse, CVAR_TEMP, "Show dropped packets");
 	qport = Cvar_RegisterInt( "net_qport", port, 1, 65535, CVAR_INIT, "The net_chan qport" );
-
-	//This is stupid to initialize with net_chan
-//	msg_dumpEnts = (cvar_t**)(0x8930c1c);
-//	msg_printEntityNums = (cvar_t**)(0x8930c18);
-	*msg_dumpEnts = Cvar_RegisterBool( "msg_dumpEnts", qfalse, CVAR_TEMP, "Print snapshot entity info");
-	*msg_printEntityNums = Cvar_RegisterBool( "msg_printEntityNums", qfalse, CVAR_TEMP, "Print entity numbers");
-
 }
 
 /*
@@ -531,7 +524,7 @@ __cdecl void QDECL NET_OutOfBandPrint( netsrc_t sock, netadr_t *adr, const char 
 ===============
 NET_OutOfBandData
 
-Sends a data message in an out-of-band datagram (only used for "PbSvSendToClient")
+Sends a data message in an out-of-band datagram
 ================
 */
 void NET_OutOfBandData( netsrc_t sock, netadr_t *adr, byte *format, int len ) {
@@ -587,11 +580,45 @@ void QDECL NET_PrintData( int sock, const char *format, ... ) {
 ===============
 NET_TCPData
 
-Sends a data message in an out-of-band datagram (only used for "PbSvSendToClient")
+Sends a data message in an out-of-band datagram
 ================
 */
-qboolean NET_SendData( int sock, byte *data, int len ) {
+qboolean NET_SendData( int sock, msg_t* msg) {
 
-	return NET_TcpSendData( sock, data, len );
+	return NET_TcpSendData( sock, msg->data, msg->cursize );
 }
 
+/*
+===============
+NET_ReceiveData
+Receives a TCP datastream
+return values:
+2: Got new data + Connection okay
+1: Got no data + Connection okay
+-1: Got no data + Connection closed
+-2: Got new data + Connection closed
+================
+*/
+int NET_ReceiveData( int sock, msg_t* msg) {
+
+	int len = msg->maxsize - msg->cursize;
+	int ret;
+
+	ret = NET_TcpClientGetData( sock, msg->data + msg->cursize, &len);
+
+	if(ret < 0 && len > 0)
+        {
+            msg->cursize += len;
+            return -2;
+        }
+	if(ret < 0 && len < 1)
+        {
+	    return -1;
+        }
+        if(len > 0)
+	{
+            msg->cursize += len;
+	    return 2;
+	}
+	return 1;
+}

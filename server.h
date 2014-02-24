@@ -129,7 +129,6 @@ typedef struct client_s {//90b4f8c
 	int			demoMaxDeltaFrames;
 	int			demoDeltaFrameCount;
 
-	int			pbfailcounter;
 	int			authentication;
 	qboolean		playerauthorized;
 	qboolean		noPb;
@@ -158,7 +157,7 @@ typedef struct client_s {//90b4f8c
 	char			loginname[32];
 	//Free Space
 	qboolean		enteredWorldForFirstTime;
-	byte			free[658];
+	byte			free[662];
 	char			name[64];
 
 	int			unknownUsercmd1;	//0x63c
@@ -330,7 +329,7 @@ typedef struct {
 	int			secret;
 	unsigned int		frameNextSecond;
 	unsigned int		frameNextTenSeconds;
-	connectqueue_t		connectqueue[10];
+	connectqueue_t		connectqueue[11];
 }serverStaticExt_t;
 
 typedef struct {
@@ -572,6 +571,8 @@ void SV_RemoteCmdSetPermission(char* command, int power);
 void SV_RemoteCmdListAdmins( void );
 __cdecl qboolean SV_GameCommand(void);
 
+void SV_GetConfigstring( int index, char *buffer, int bufferSize );
+
 extern cvar_t* sv_padPackets;
 extern cvar_t* sv_demoCompletedCmd;
 extern cvar_t* sv_wwwBaseURL;
@@ -631,7 +632,7 @@ char* SV_PlayerBannedByip(netadr_t *netadr);	//Gets called in SV_DirectConnect
 void SV_PlayerAddBanByip(netadr_t *remote, char *reason, int uid, char* guid, int adminuid, int expire);		//Gets called by future implemented ban-commands and if a prior ban got enforced again - This function can also be used to unset bans by setting 0 bantime
 qboolean SV_RemoveBan(int uid, char* guid, char* name);
 void SV_DumpBanlist( void );
-
+void SV_AddSafeCommands();
 extern	serverStaticExt_t	svse;	// persistant server info across maps
 extern	permServerStatic_t	psvs;	// persistant even if server does shutdown
 
@@ -643,6 +644,8 @@ __cdecl void SV_UpdateServerCommandsToClient( client_t *client, msg_t *msg );
 __cdecl void SV_SendMessageToClient( msg_t *msg, client_t *client );
 __cdecl void SV_WriteSnapshotToClient(client_t* client, msg_t* msg);
 __cdecl void SV_ClipMoveToEntity(struct moveclip_s *clip, svEntity_t *entity, struct trace_s *trace);
-
+void SV_Cmd_Init();
+void SV_CopyCvars();
 #endif
+
 

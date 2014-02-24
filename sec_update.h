@@ -21,9 +21,11 @@
 #ifndef SEC_UPDATE_H
 #define SEC_UPDATE_H
 #include "sec_init.h"
+#include "q_platform.h"
 #include "version.h"
 
-void Sec_Update(char *cmdLine[]);
+
+void Sec_Update( qboolean getbasefiles );
 
 
 typedef struct{
@@ -36,8 +38,8 @@ typedef struct{
 }sec_httpPacket_t;
 
 typedef struct sec_file_s{
-    char name[128];
-    char path[256];
+    char name[MAX_OSPATH];
+    char path[MAX_OSPATH];
     int size;
     char hash[65];
     struct sec_file_s *next;
@@ -54,18 +56,21 @@ typedef struct sec_file_s{
 
 
 //#undef QUOTE
-#define SEC_UPDATE_HOST "update.iceops.in"
+#define SEC_UPDATE_HOST "update.iceops.in:80"
 #define SEC_UPDATE_PHP(B,T) "/?ver=1.7&build=" B "&type=" T
 #define SEC_UPDATE_USER_AGENT "CoD4X AutoUpdater V. " SEC_UPDATE_VERSION
 //#define SEC_UPDATE_BOUNDARY "------------------------------------874ryg7v"
 #define SEC_UPDATE_PORT 80
 
 
-#define SEC_UPDATE_DOWNLOAD(file) "GET %s HTTP/1.1 \r\nHost: %s \r\nUser-Agent: %s \r\nAccept-Encoding: \r\nConnection: Close\r\n\r\n", file, SEC_UPDATE_HOST,SEC_UPDATE_USER_AGENT
+#define SEC_UPDATE_DOWNLOAD(baseurl, qpath) "GET %s%s HTTP/1.1 \r\nHost: %s \r\nUser-Agent: %s \r\nAccept-Encoding: \r\nConnection: Close\r\n\r\n", baseurl, qpath, SEC_UPDATE_HOST,SEC_UPDATE_USER_AGENT
 //#define SEC_UPDATE_TMP SEC_UPDATE_PHP(BUILD_NUMBER,"e")
-#define SEC_UPDATE_GETVERSION "GET /?ver=%g&build=%d&type=%c HTTP/1.1 \r\nHost: %s \r\nUser-Agent: %s \r\nAccept-Encoding: \r\nConnection: Close\r\n\r\n", SEC_VERSION, BUILD_NUMBER, SEC_TYPE, SEC_UPDATE_HOST,SEC_UPDATE_USER_AGENT
+    #define SEC_UPDATE_GETVERSION "GET /?ver=%g&os=%s&build=%d&type=%c HTTP/1.1 \r\nHost: %s \r\nUser-Agent: %s \r\nAccept-Encoding: \r\nConnection: Close\r\n\r\n", SEC_VERSION, OS_STRING, BUILD_NUMBER, SEC_TYPE, SEC_UPDATE_HOST,SEC_UPDATE_USER_AGENT
+#define SEC_UPDATE_GETGROUNDVERSION "GET /?ver=%g&os=%s&build=%d&type=%c HTTP/1.1 \r\nHost: %s \r\nUser-Agent: %s \r\nAccept-Encoding: \r\nConnection: Close\r\n\r\n", SEC_VERSION, OS_STRING, 753, 'b', SEC_UPDATE_HOST,SEC_UPDATE_USER_AGENT
 //#define SEC_UPDATE_GETVERSION SEC_UPDATE_DOWNLOAD(SEC_UPDATE_TMP)
 
-
+#if defined(OFFICIAL) || defined(OFFICIALTESTING) || defined(OFFICIALBETA) || defined(OFFICIALDEBUG)
+    #define CAN_UPDATE
+#endif
 
 #endif

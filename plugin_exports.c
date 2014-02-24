@@ -22,7 +22,7 @@
 
 
 #include "plugin_handler.h"
-#include "scr_vm.h"
+
 /*=========================================*
  *                                         *
  *        Plugin Handler's exports         *
@@ -314,6 +314,7 @@ P_P_F void Plugin_SetPlayerGUID(unsigned int clientslot, const char* guid)
 
 P_P_F void Plugin_SetPlayerNoPB(unsigned int clientslot)
 {
+#ifdef PUNKBUSTER
     client_t *cl;
     int PID = PHandler_CallerID();
     if(clientslot > sv_maxclients->integer)
@@ -322,6 +323,7 @@ P_P_F void Plugin_SetPlayerNoPB(unsigned int clientslot)
     }
     cl = &svs.clients[clientslot];
     cl->noPb = qtrue;
+#endif
 }
 
 P_P_F int Plugin_DoesServerUseUids(void)
@@ -346,103 +348,32 @@ P_P_F int Plugin_GetServerTime(void)
 
 P_P_F void Plugin_ScrAddFunction(char *name, xfunction_t function)
 {
-    volatile int pID;
-    pID = PHandler_CallerID();
-    if(pID>=MAX_PLUGINS){
-        Com_Printf("Error: tried adding a script command for a plugin with non existent pID. pID supplied: %d.\n",pID);
-        return;
-    }else if(pID<0){
-        Com_Printf("Plugin Handler error: Plugin_ScrAddFunction called from not within a plugin or from a disabled plugin!\n");
-        return;
-    }
-    if(!pluginFunctions.plugins[pID].loaded){
-        Com_Printf("Error: Tried adding a command for not loaded plugin! PID: %d.\n",pID);
-    }
-    Com_Printf("Adding a plugin script function for plugin %d, command name: %s.\n",pID, name);
+    int PID = PHandler_CallerID();
 
-    if(Scr_AddFunction(name, function, qfalse) == qfalse)
-    {
-        Com_PrintError("Failed to add this script function: %s for plugin\n", name);
-        return;
-    }
-    pluginFunctions.plugins[pID].scriptfunctions ++;
+    PHandler_ScrAddFunction(name, function, qfalse, PID);
 }
 
 P_P_F void Plugin_ScrAddMethod(char *name, xfunction_t function)
 {
-    volatile int pID;
-    pID = PHandler_CallerID();
-    if(pID>=MAX_PLUGINS){
-        Com_Printf("Error: tried adding a script command for a plugin with non existent pID. pID supplied: %d.\n",pID);
-        return;
-    }else if(pID<0){
-        Com_Printf("Plugin Handler error: Plugin_ScrAddMethod called from not within a plugin or from a disabled plugin!\n");
-        return;
-    }
-    if(!pluginFunctions.plugins[pID].loaded){
-        Com_Printf("Error: Tried adding a command for not loaded plugin! PID: %d.\n",pID);
-    }
-    Com_Printf("Adding a plugin script method for plugin %d, command name: %s.\n",pID, name);
+    int PID = PHandler_CallerID();
 
-    if(Scr_AddMethod(name, function, qfalse) == qfalse)
-    {
-        Com_PrintError("Failed to add this script function: %s for plugin\n", name);
-        return;
-    }
-    pluginFunctions.plugins[pID].scriptmethods ++;
+    PHandler_ScrAddMethod(name, function, qfalse, PID);
 }
 
 P_P_F void Plugin_ScrReplaceFunction(char *name, xfunction_t function)
 {
-    volatile int pID;
-    pID = PHandler_CallerID();
-    if(pID>=MAX_PLUGINS){
-        Com_Printf("Error: tried adding a script command for a plugin with non existent pID. pID supplied: %d.\n",pID);
-        return;
-    }else if(pID<0){
-        Com_Printf("Plugin Handler error: Plugin_ScrAddFunction called from not within a plugin or from a disabled plugin!\n");
-        return;
-    }
-    if(!pluginFunctions.plugins[pID].loaded){
-        Com_Printf("Error: Tried adding a command for not loaded plugin! PID: %d.\n",pID);
-    }
-    Com_Printf("Adding a plugin script function for plugin %d, command name: %s.\n",pID, name);
+    int PID = PHandler_CallerID();
 
-    Scr_RemoveFunction(name);
-
-    if(Scr_AddFunction(name, function, qfalse) == qfalse)
-    {
-        Com_PrintError("Failed to add this script function: %s for plugin\n", name);
-        return;
-    }
-    pluginFunctions.plugins[pID].scriptfunctions ++;
+    PHandler_ScrAddFunction(name, function, qtrue, PID);
 }
 
 P_P_F void Plugin_ScrReplaceMethod(char *name, xfunction_t function)
 {
-    volatile int pID;
-    pID = PHandler_CallerID();
-    if(pID>=MAX_PLUGINS){
-        Com_Printf("Error: tried adding a script command for a plugin with non existent pID. pID supplied: %d.\n",pID);
-        return;
-    }else if(pID<0){
-        Com_Printf("Plugin Handler error: Plugin_ScrAddMethod called from not within a plugin or from a disabled plugin!\n");
-        return;
-    }
-    if(!pluginFunctions.plugins[pID].loaded){
-        Com_Printf("Error: Tried adding a command for not loaded plugin! PID: %d.\n",pID);
-    }
-    Com_Printf("Adding a plugin script method for plugin %d, command name: %s.\n",pID, name);
+    int PID = PHandler_CallerID();
 
-    Scr_RemoveMethod(name);
-
-    if(Scr_AddMethod(name, function, qfalse) == qfalse)
-    {
-        Com_PrintError("Failed to add this script function: %s for plugin\n", name);
-        return;
-    }
-    pluginFunctions.plugins[pID].scriptmethods ++;
+    PHandler_ScrAddMethod(name, function, qtrue, PID);
 }
+
 
 P_P_F void Plugin_ChatPrintf(int slot, const char *fmt, ... )
 {

@@ -64,10 +64,10 @@ void Scr_AddStockFunctions(){
 	Scr_AddFunction("isdefined", (void*)0x80bbf2c, 0);
 	Scr_AddFunction("isstring", (void*)0x80bbf06, 0);
 	Scr_AddFunction("isalive", (void*)0x80bbeaa, 0);
-	Scr_AddFunction("getdvar", (void*)0x80bf5ec, 0);
-	Scr_AddFunction("getdvarint", (void*)0x80bf5a8, 0);
-	Scr_AddFunction("getdvarfloat", (void*)0x80bf56c, 0);
-	Scr_AddFunction("setdvar", (void*)0x80c07ce, 0);
+	Scr_AddFunction("getdvar", GScr_GetCvar, 0);
+	Scr_AddFunction("getdvarint", GScr_GetCvarInt, 0);
+	Scr_AddFunction("getdvarfloat", GScr_GetCvarFloat, 0);
+	Scr_AddFunction("setdvar", GScr_SetCvar, 0);
 	Scr_AddFunction("gettime", (void*)0x80bb514, 0);
 	Scr_AddFunction("getentbynum", (void*)0x80bbf96, 0);
 	Scr_AddFunction("getweaponmodel", (void*)0x80bf490, 0);
@@ -162,7 +162,6 @@ void Scr_AddStockFunctions(){
 	Scr_AddFunction("earthquake", (void*)0x80c112e, 0);
 	Scr_AddFunction("newhudelem", GScr_NewHudElem, 0);
 	Scr_AddFunction("newclienthudelem", GScr_NewClientHudElem, 0);
-	Scr_AddFunction("getpower", PlayerCmd_GetPower, 0);
 	Scr_AddFunction("newteamhudelem", (void*)0x808f95e, 0);
 	Scr_AddFunction("resettimeout", (void*)0x815d050, 0);
 	Scr_AddFunction("weaponfiretime", (void*)0x80bda62, 0);
@@ -203,7 +202,7 @@ void Scr_AddStockFunctions(){
 	Scr_AddFunction("addtestclient", GScr_SpawnBot, 0);
 	Scr_AddFunction("removetestclient", GScr_RemoveBot, 0);
 	Scr_AddFunction("removealltestclients", GScr_RemoveAllBots, 0);
-	Scr_AddFunction("makedvarserverinfo", (void*)0x80c05bc, 0);
+	Scr_AddFunction("makedvarserverinfo", GScr_MakeCvarServerInfo, 0);
 	Scr_AddFunction("setarchive", (void*)0x80bb034, 0);
 	Scr_AddFunction("allclientsprint", (void*)0x80bbc8c, 0);
 	Scr_AddFunction("clientprint", (void*)0x80bbc20, 0);
@@ -272,6 +271,7 @@ void Scr_AddStockFunctions(){
 
 void Scr_AddStockMethods(){
 	//PlayerCmd
+	Scr_AddMethod("getpower", PlayerCmd_GetPower, 0);
 	Scr_AddMethod("giveweapon", (void*)0x80abc48, 0);
 	Scr_AddMethod("takeweapon", (void*)0x80abbb4, 0);
 	Scr_AddMethod("takeallweapons", (void*)0x80abb0e, 0);

@@ -81,7 +81,6 @@ void MSG_Init( msg_t *buf, byte *data, int length ) {
 	buf->readcount = 0;
 	buf->bit = 0;
 	buf->lastRefEntity = 0;
-	buf->var_04 = 0;
 }
 
 void MSG_InitReadOnly( msg_t *buf, byte *data, int length ) {
@@ -362,6 +361,24 @@ int MSG_ReadLong( msg_t *msg ) {
 	return *c;
 
 }
+/*
+int MSG_SkipToString( msg_t *msg, const char* string ) {
+	byte c;
+
+	do{
+		c = MSG_ReadByte( msg );      // use ReadByte so -1 is out of bounds
+		if ( c == -1 )
+		{
+			return qfalse;
+		}
+		if(c == string[0] && !Q_strncmp(msg->data + msg->readcount, string, msg->cursize - msg->readcount))
+		{
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+*/
 
 
 char *MSG_ReadString( msg_t *msg ) {
